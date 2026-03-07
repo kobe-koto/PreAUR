@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import * as fs from 'node:fs';
 import type { PreaurResources } from './config';
 
 export function calculateNproc(cpuConfig?: string): number {
@@ -26,7 +27,8 @@ export async function buildPackage(
   pkgDir: string,
   builder: string = 'extra-x86_64-build',
   resources?: PreaurResources,
-  dummyPkgs?: string[]
+  dummyPkgs?: string[],
+  logStream?: fs.WriteStream
 ): Promise<void> {
   const nproc = calculateNproc(resources?.cpu);
 
@@ -53,12 +55,17 @@ export async function buildPackage(
 
     const buildProcess = spawn(cmd, args, {
       cwd: pkgDir,
-      stdio: 'inherit',
+      stdio: logStream ? ['ignore', 'pipe', 'pipe'] : 'inherit',
       env: {
         ...process.env,
         MAKEFLAGS: `-j${nproc}`,
       }
     });
+
+    if (logStream && buildProcess.stdout && buildProcess.stderr) {
+      buildProcess.stdout.pipe(logStream, { end: false });
+      buildProcess.stderr.pipe(logStream, { end: false });
+    }
 
     buildProcess.on('close', (code: number | null) => {
       if (code === 0) {

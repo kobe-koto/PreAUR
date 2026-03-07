@@ -10,6 +10,7 @@ export interface PreaurMaintainer {
 
 export interface PreaurResources {
   cpu?: string; // e.g., "-2", "2", "--all"
+  parallel?: string | number; // For concurrent package processing
 }
 
 export interface PreaurRepo {
@@ -53,6 +54,7 @@ export interface PreaurPackage {
   builder?: string; // 'pkgctl build', 'extra-x86_64-build', etc.
   push?: boolean; // Optional, push on succeed
   dummy_packages?: PreaurDummyPackage[];
+  repo_packages?: string[]; // Packages that must be built before this package
 }
 
 export interface PreaurConfig {

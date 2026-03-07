@@ -11,6 +11,7 @@ resources:
   # "--all" -> uses all logical cores
   # "4" -> explicitly use 4 cores
   cpu: "-2" 
+  parallel: 2
 
 repo:
   # Defines the local output registry name
@@ -51,6 +52,8 @@ packages:
         pkgrel: 1
         files:
          - /usr/bin/grub # this would be a copy of /dev/null
+    repo_packages: # packages that in this repo, and should be installed before build this package
+      - grub-theme-lain
 
   # Debian/APT repository mapped package
   - pkgname: "visual-studio-code-bin"

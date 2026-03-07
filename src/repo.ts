@@ -24,6 +24,39 @@ export async function hasBuiltPackage(
   }
 }
 
+export async function resolveBuiltPackage(
+  repoConfig: PreaurRepo,
+  pkgname: string,
+  baseDir: string = process.cwd()
+): Promise<string> {
+  const repoDir = path.resolve(baseDir, 'repo', repoConfig.name);
+  try {
+    const files = await fs.readdir(repoDir);
+    // Looking for the latest <pkgname>-<ver>-<rel>-<arch>.pkg.tar.zst 
+    // We can just rely on the prefix match and perhaps sort or just pick the first match 
+    // Usually the repo only has the latest one because we overwrite or clean, but if there's multiple
+    // we should grab the one that pacman would use. For simplicity, just finding one that starts with pkgname.
+    // However, pkgname might be "grub" and match "grub-theme". Thus we must match "^pkgname-[0-9]+".
+    const prefix = `${pkgname}-`;
+    const pkgFiles = files.filter(f => f.startsWith(prefix) && f.endsWith('.pkg.tar.zst'));
+    
+    if (pkgFiles.length === 0) {
+      throw new Error(`Could not find built package for ${pkgname} in repository ${repoConfig.name}`);
+    }
+
+    // Sort by modified time:
+    const stats = await Promise.all(pkgFiles.map(async f => ({
+      file: f,
+      stat: await fs.stat(path.join(repoDir, f))
+    })));
+    stats.sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
+
+    return path.join(repoDir, stats[0]!.file);
+  } catch (e: any) {
+    throw new Error(`Failed to resolve package ${pkgname} in repo: ${e.message}`);
+  }
+}
+
 const execAsync = promisify(exec);
 
 export async function manageRepository(

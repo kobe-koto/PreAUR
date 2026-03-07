@@ -5,12 +5,15 @@ import { Command } from 'commander';
 import * as path from 'node:path';
 
 import { loadConfig } from './config';
+import type { PreaurPackage, PreaurConfig } from './config';
 import { fetchLatestVersion } from './checker';
 import { preparePackageDiff, commitAndPush } from './git';
 import { updatePkgBuild, parsePkgBuild, updateDynamicPkgver } from './pkgbuild';
 import { buildPackage } from './builder';
 import { createDummyPackages } from './dummy';
-import { manageRepository, hasBuiltPackage } from './repo';
+import { manageRepository, hasBuiltPackage, resolveBuiltPackage } from './repo';
+import { initMainLogger, createTaskLogger } from './logger';
+import { Semaphore } from './semaphore';
 
 const program = new Command();
 
@@ -22,7 +25,9 @@ program
   .option('-p, --pkg <name>', 'only run for a specific package')
   .action(async (options) => {
     try {
+      initMainLogger(process.cwd());
       console.log(`[Preaur] Loading config from ${options.config}`);
+      
       const configPath = path.resolve(process.cwd(), options.config);
       const config = await loadConfig(configPath);
 
@@ -35,13 +40,42 @@ program
         return;
       }
 
+      const rawParallel = config.resources?.parallel || 2;
+      const parallelLimit = typeof rawParallel === 'string' ? parseInt(rawParallel, 10) : rawParallel;
+      const pool = new Semaphore(isNaN(parallelLimit) ? 2 : parallelLimit);
+
+      const pkgResolvers = new Map<string, () => void>();
+      const pkgPromises = new Map<string, Promise<void>>();
+
+      // Pre-register all promises so any package can safely await any other, regardless of array order.
       for (const pkg of packagesToProcess) {
+        let resolver: () => void;
+        const p = new Promise<void>((res) => { resolver = res; });
+        pkgResolvers.set(pkg.pkgname, resolver!);
+        pkgPromises.set(pkg.pkgname, p);
+      }
+
+      const processPackage = async (pkg: PreaurPackage): Promise<void> => {
+        // Wait for dependencies first
+        if (pkg.repo_packages && pkg.repo_packages.length > 0) {
+          const deps = pkg.repo_packages
+            .filter(dep => pkgPromises.has(dep))
+            .map(dep => pkgPromises.get(dep));
+          
+          if (deps.length > 0) {
+             console.log(`[Queue] ${pkg.pkgname} is waiting for ${deps.length} dependencies to finish...`);
+             await Promise.all(deps);
+          }
+        }
+
+        await pool.acquire();
+
+        const loggerStream = createTaskLogger(pkg.pkgname);
         console.log(`\n================================`);
-        console.log(`[Preaur] Processing package: ${pkg.pkgname}`);
+        console.log(`[Preaur] Processing package: ${pkg.pkgname} (Logs streaming to ${pkg.pkgname}.log)`);
         console.log(`================================`);
 
         try {
-          // Git operations mapping
           const pkgbuildsBase = path.resolve(process.cwd(), 'pkgbuilds');
           const { path: pkgDir, git } = await preparePackageDiff(
             pkg.pkgname,
@@ -51,49 +85,31 @@ program
           );
 
           let newVersion: string | null = null;
-
           if (pkg.checker) {
-            console.log(`[Checker] Checking version using ${pkg.checker.type} provider...`);
+            console.log(`[Checker] Checking version using ${pkg.checker.type} provider for ${pkg.pkgname}...`);
             newVersion = await fetchLatestVersion(pkg.checker);
             if (newVersion) {
-              console.log(`[Checker] Latest version is v${newVersion}`);
+              console.log(`[Checker] Latest version for ${pkg.pkgname} is v${newVersion}`);
             } else {
-              console.log(`[Checker] Could not ascertain latest version.`);
+              console.log(`[Checker] Could not ascertain latest version for ${pkg.pkgname}.`);
             }
           }
 
-          // In this simplified workflow, any time there's a git divergence or version change, 
-          // we update the pkgbuild. Right now it just bumps PKGREL or sets PKGVER based on newVersion.
-          // Because `packageDiff` did a clone or a pull, we should check `git status` or last commit 
-          // compared to upstream if we only want to bump pkgrel when upstream changes, but here we'll 
-          // just let it build if new version.
-
           const pkgbuildPath = path.resolve(pkgDir, 'PKGBUILD');
-
           await updateDynamicPkgver(pkgbuildPath);
 
           const currentData = await parsePkgBuild(pkgbuildPath).catch(e => {
-            console.warn(`[PKGBUILD] Failed to parse initial PKGBUILD: ${e.message}`);
+            console.warn(`[PKGBUILD] Failed to parse initial PKGBUILD for ${pkg.pkgname}: ${e.message}`);
             return null;
           });
 
-          // Check if version changed from current
           let needsRelBump = false;
           if (!newVersion || (currentData && currentData.pkgver === newVersion)) {
-            // Version didn't change via checker, but maybe there were git updates?
-            const status = await git.status();
-            if (status.behind > 0) {
-              // Or rather if we pulled changes... 
-              // It's intricate to detect if we *just* pulled updates that modified source arrays
-              // For now, let's assume if git says we have uncommitted changes or we want to force rebuild
-              // We don't automatically bump pkgrel unless requested or configured to detect PKGBUILD diff.
-            }
+             // Intricate to detect pull changes accurately without massive git status parsing
           }
 
           const builderType = pkg.builder || 'extra-x86_64-build';
-
           const pkgbuildModified = await updatePkgBuild(pkgbuildPath, newVersion, needsRelBump);
-
           const finalData = await parsePkgBuild(pkgbuildPath);
 
           let shouldBuild = true;
@@ -106,12 +122,28 @@ program
           }
 
           if (shouldBuild) {
-            let dummyPkgPaths: string[] = [];
-            if (pkg.dummy_packages && pkg.dummy_packages.length > 0) {
-              dummyPkgPaths = await createDummyPackages(pkg.dummy_packages);
+            let extraPaths: string[] = [];
+            
+            // Resolve repository dependencies (built packages)
+            if (pkg.repo_packages && pkg.repo_packages.length > 0 && config.repo) {
+              for (const dep of pkg.repo_packages) {
+                try {
+                  const p = await resolveBuiltPackage(config.repo, dep, process.cwd());
+                  extraPaths.push(p);
+                } catch(e: any) {
+                  console.warn(`[Repo] Could not resolve dependency ${dep} inside repository for ${pkg.pkgname}. Make sure it is built!`);
+                }
+              }
             }
 
-            await buildPackage(pkgDir, builderType, config.resources, dummyPkgPaths);
+            // Resolve dummy dependencies
+            if (pkg.dummy_packages && pkg.dummy_packages.length > 0) {
+              const dummyPkgs = await createDummyPackages(pkg.dummy_packages, loggerStream);
+              extraPaths.push(...dummyPkgs);
+            }
+
+            // Execute build
+            await buildPackage(pkgDir, builderType, config.resources, extraPaths, loggerStream);
 
             const status = await git.status();
             const hasGitChanges = status.files.length > 0;
@@ -119,7 +151,7 @@ program
             if ((pkgbuildModified || hasGitChanges) && pkg.push) {
               await commitAndPush(git, pkg.pkgname, finalData.pkgver, true);
             } else {
-              console.log(`[Preaur] Skipping push phase. modified=${pkgbuildModified || hasGitChanges}, push=${!!pkg.push}`);
+              console.log(`[Preaur] Skipping push phase for ${pkg.pkgname}.`);
             }
 
             if (config.repo) {
@@ -129,8 +161,22 @@ program
 
         } catch (pkgError: any) {
           console.error(`[Preaur] Error processing ${pkg.pkgname}: ${pkgError.message}`);
+        } finally {
+          loggerStream.end();
+          pool.release();
+          // Notify any downstream packages waiting on this one that it has finished
+          const resolveTrigger = pkgResolvers.get(pkg.pkgname);
+          if (resolveTrigger) resolveTrigger();
         }
+      };
+
+      // Kick off processing (they will wait on dependencies internally)
+      for (const pkg of packagesToProcess) {
+        processPackage(pkg); // Don't await here, we let them orchestrate themselves
       }
+
+      // Wait for all pre-registered topological promises to resolve
+      await Promise.all(pkgPromises.values());
 
       console.log(`\n[Preaur] All tasks finished.`);
     } catch (err: any) {

@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises';
+import { WriteStream } from 'node:fs';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
@@ -8,7 +9,8 @@ import type { PreaurDummyPackage } from './config';
 const execAsync = promisify(exec);
 
 export async function createDummyPackages(
-  dummies: PreaurDummyPackage[]
+  dummies: PreaurDummyPackage[],
+  logStream?: WriteStream
 ): Promise<string[]> {
   const dummyPkgs: string[] = [];
   
@@ -49,7 +51,19 @@ ${packageFuncBody}
 
     console.log(`[Dummy] Building dummy package ${pkgname} in ${workDir}...`);
     try {
-      await execAsync('makepkg -cf --noconfirm', { cwd: workDir });
+      const child = exec('makepkg -cf --noconfirm', { cwd: workDir });
+      if (logStream && child.stdout && child.stderr) {
+        child.stdout.pipe(logStream, { end: false });
+        child.stderr.pipe(logStream, { end: false });
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        child.on('close', (code) => {
+          if (code === 0) resolve();
+          else reject(new Error(`Exit code ${code}`));
+        });
+        child.on('error', reject);
+      });
     } catch (e: any) {
       console.error(`[Dummy] Failed to build dummy package ${pkgname}: ${e.message}`);
       throw e;
