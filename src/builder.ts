@@ -25,7 +25,8 @@ export function calculateNproc(cpuConfig?: string): number {
 export async function buildPackage(
   pkgDir: string,
   builder: string = 'extra-x86_64-build',
-  resources?: PreaurResources
+  resources?: PreaurResources,
+  dummyPkgs?: string[]
 ): Promise<void> {
   const nproc = calculateNproc(resources?.cpu);
 
@@ -36,6 +37,20 @@ export async function buildPackage(
     // but relies on being in the correct directory.
     const [cmd, ...args] = builder.split(' ');
 
+    if (!cmd) {
+      reject(new Error('Invalid builder command'));
+      return;
+    }
+
+    if (dummyPkgs && dummyPkgs.length > 0) {
+      if (cmd.endsWith('-build')) {
+         args.push('--');
+      }
+      for (const p of dummyPkgs) {
+        args.push('-I', p);
+      }
+    }
+
     const buildProcess = spawn(cmd, args, {
       cwd: pkgDir,
       stdio: 'inherit',
@@ -45,7 +60,7 @@ export async function buildPackage(
       }
     });
 
-    buildProcess.on('close', (code) => {
+    buildProcess.on('close', (code: number | null) => {
       if (code === 0) {
         console.log(`[Builder] Build finished successfully for ${path.basename(pkgDir)}`);
         resolve();
@@ -55,7 +70,7 @@ export async function buildPackage(
       }
     });
 
-    buildProcess.on('error', (err) => {
+    buildProcess.on('error', (err: Error) => {
       console.error(`[Builder] Failed to start builder process: ${err.message}`);
       reject(err);
     });

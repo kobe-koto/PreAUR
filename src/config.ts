@@ -37,6 +37,14 @@ export interface PreaurChecker {
   arch?: string;
 }
 
+export interface PreaurDummyPackage {
+  dummy: string;
+  epoch?: string | number;
+  pkgver?: string | number;
+  pkgrel?: string | number;
+  files?: string[];
+}
+
 export interface PreaurPackage {
   pkgname: string;
   maintainer: string;
@@ -44,6 +52,7 @@ export interface PreaurPackage {
   checker?: PreaurChecker;
   builder?: string; // 'pkgctl build', 'extra-x86_64-build', etc.
   push?: boolean; // Optional, push on succeed
+  dummy_packages?: PreaurDummyPackage[];
 }
 
 export interface PreaurConfig {

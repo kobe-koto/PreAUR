@@ -30,6 +30,13 @@ packages:
       normalize: true # replace colons :, forward slashes /, hyphens -, or whitespaces with underscores
     push: true # Automatically git commit and push back to AUR on success
     builder: "extra-x86_64-build" # Specific build executable. Can use "pkgctl build" if preferred! Defaults to extra-x86_64-build
+    dummy_packages:
+      - dummy: "grub" # this result in a `grub-dummy` pkg provides "grub"
+        epoch: 2
+        pkgver: 2.14
+        pkgrel: 1
+        files:
+         - /usr/bin/grub # this would be a copy of /dev/null
 
   # Git/Dynamic Versioning mapped package
   - pkgname: "grub-theme-lobo-git"
@@ -37,6 +44,13 @@ packages:
     # Notice: No checker is needed here.
     # preaur automatically detects the `pkgver()` bash block
     # and invokes `makepkg -odc` to pull the latest commits and dynamically set the package version.
+    dummy_packages:
+      - dummy: "grub" # this result in a `grub-dummy` pkg provides "grub"
+        epoch: 2
+        pkgver: 2.14
+        pkgrel: 1
+        files:
+         - /usr/bin/grub # this would be a copy of /dev/null
 
   # Debian/APT repository mapped package
   - pkgname: "visual-studio-code-bin"

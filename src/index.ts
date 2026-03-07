@@ -9,6 +9,7 @@ import { fetchLatestVersion } from './checker';
 import { preparePackageDiff, commitAndPush } from './git';
 import { updatePkgBuild, parsePkgBuild, updateDynamicPkgver } from './pkgbuild';
 import { buildPackage } from './builder';
+import { createDummyPackages } from './dummy';
 import { manageRepository, hasBuiltPackage } from './repo';
 
 const program = new Command();
@@ -105,7 +106,12 @@ program
           }
 
           if (shouldBuild) {
-            await buildPackage(pkgDir, builderType, config.resources);
+            let dummyPkgPaths: string[] = [];
+            if (pkg.dummy_packages && pkg.dummy_packages.length > 0) {
+              dummyPkgPaths = await createDummyPackages(pkg.dummy_packages);
+            }
+
+            await buildPackage(pkgDir, builderType, config.resources, dummyPkgPaths);
 
             const status = await git.status();
             const hasGitChanges = status.files.length > 0;
