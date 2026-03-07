@@ -80,6 +80,10 @@ export class GitHubProvider implements CheckerProvider {
         tag = tag.split(/[-_]/)[0] || tag;
       }
 
+      if (config.normalize) {
+        tag = tag.replace(/[:/\-\s]/g, '_');
+      }
+
       return tag;
     } catch (error: any) {
       console.error(`[Checker] Failed to fetch version from GitHub for ${repo}: ${error.message}`);
