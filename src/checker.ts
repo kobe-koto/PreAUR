@@ -26,6 +26,41 @@ function compareVersions(v1: string, v2: string): number {
   return 0;
 }
 
+export function applyVersionTemplate(template: string, version: string): Record<string, string> | null {
+  const escapes = template.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const varNames: string[] = [];
+  const regexStr = escapes.replace(/\\\{([a-zA-Z0-9_~]+)\\\}/g, (match, g1) => {
+    varNames.push(g1);
+    return '(.*?)';
+  });
+
+  const regex = new RegExp(`^${regexStr}$`, 'd');
+  const match = regex.exec(version) as any;
+
+  if (match) {
+    const result: Record<string, { start: number, end: number }> = {};
+    for (let i = 0; i < varNames.length; i++) {
+        const vName = varNames[i] as string;
+        const actualName = vName.startsWith('~') ? vName.slice(1) : vName;
+        const indices = match.indices[i + 1];
+        
+        if (!result[actualName]) {
+            result[actualName] = { start: indices[0], end: indices[1] };
+        } else {
+            result[actualName].start = Math.min(result[actualName].start, indices[0]);
+            result[actualName].end = Math.max(result[actualName].end, indices[1]);
+        }
+    }
+    
+    const finalVars: Record<string, string> = {};
+    for (const [key, span] of Object.entries(result)) {
+        finalVars[key] = version.substring(span.start, span.end);
+    }
+    return finalVars;
+  }
+  return null;
+}
+
 export interface CheckerResult {
   version: string;
   epoch?: string;

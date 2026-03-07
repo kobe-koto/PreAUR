@@ -6,7 +6,7 @@ import * as path from 'node:path';
 
 import { loadConfig } from './config';
 import type { PreaurPackage, PreaurConfig } from './config';
-import { fetchLatestVersion } from './checker';
+import { fetchLatestVersion, applyVersionTemplate } from './checker';
 import { preparePackageDiff, commitAndPush } from './git';
 import { updatePkgBuild, parsePkgBuild, updateDynamicPkgver } from './pkgbuild';
 import { buildPackage } from './builder';
@@ -90,6 +90,7 @@ program
 
           let newVersion: string | null = null;
           let newEpoch: string | undefined = undefined;
+          let templateUpdates: Record<string, string> = {};
 
           if (pkg.checker) {
             console.log(`[Checker] Checking version using ${pkg.checker.type} provider for ${pkg.pkgname}...`);
@@ -98,6 +99,22 @@ program
               newVersion = checkerRes.version;
               newEpoch = checkerRes.epoch;
               console.log(`[Checker] Latest version for ${pkg.pkgname} is v${newVersion}${newEpoch ? ` (epoch: ${newEpoch})` : ''}`);
+              
+              if (pkg.checker.template) {
+                 const tplResult = applyVersionTemplate(pkg.checker.template, newVersion);
+                 if (tplResult) {
+                     templateUpdates = tplResult;
+                     console.log(`[Checker] Template override applied: ${JSON.stringify(templateUpdates)}`);
+                 } else {
+                     console.warn(`[Checker] Template parsing failed for ${newVersion}`);
+                     templateUpdates = { pkgver: newVersion };
+                 }
+              } else {
+                 templateUpdates = { pkgver: newVersion };
+              }
+              if (newEpoch) {
+                 templateUpdates.epoch = newEpoch;
+              }
             } else {
               console.log(`[Checker] Could not ascertain latest version for ${pkg.pkgname}.`);
             }
@@ -123,17 +140,19 @@ program
           let needsRelBump = false;
           // In case of git packages, their checking is embedded in makepkg. If checker was specified, use that explicitly.
           const builderType = pkg.builder || 'extra-x86_64-build';
-          const pkgbuildModified = await updatePkgBuild(pkgbuildPath, newVersion, newEpoch, needsRelBump);
+          const pkgbuildModified = await updatePkgBuild(pkgbuildPath, templateUpdates, needsRelBump);
           const finalData = await parsePkgBuild(pkgbuildPath);
 
-          let updateFound = false;
-          if (localData) {
-             if (finalData.epoch !== localData.epoch || finalData.pkgver !== localData.pkgver || finalData.pkgrel !== localData.pkgrel) {
+          let updateFound = pkgbuildModified;
+          if (!updateFound) {
+             if (localData) {
+                if (finalData.epoch !== localData.epoch || finalData.pkgver !== localData.pkgver || finalData.pkgrel !== localData.pkgrel) {
+                   updateFound = true;
+                   console.log(`[Preaur] Update detected: local(${localData.epoch ? localData.epoch+':' : ''}${localData.pkgver}-${localData.pkgrel}) -> new(${finalData.epoch ? finalData.epoch+':' : ''}${finalData.pkgver}-${finalData.pkgrel})`);
+                }
+             } else {
                 updateFound = true;
-                console.log(`[Preaur] Update detected: local(${localData.epoch ? localData.epoch+':' : ''}${localData.pkgver}-${localData.pkgrel}) -> new(${finalData.epoch ? finalData.epoch+':' : ''}${finalData.pkgver}-${finalData.pkgrel})`);
              }
-          } else {
-             updateFound = true;
           }
 
           let shouldBuild = updateFound;

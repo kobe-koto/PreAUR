@@ -23,6 +23,7 @@ export interface PreaurChecker {
   // Generic
   strip_version?: boolean;
   normalize?: boolean;
+  template?: string;
 
   // GitHub
   repo?: string;

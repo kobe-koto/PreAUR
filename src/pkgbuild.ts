@@ -53,34 +53,48 @@ export async function updateDynamicPkgver(pkgbuildPath: string): Promise<boolean
 
 export async function updatePkgBuild(
   pkgbuildPath: string, 
-  newVersion: string | null,
-  newEpoch?: string | null,
+  updates: Record<string, string>,
   forceBumpRel: boolean = false
 ): Promise<boolean> {
   let content = await fs.readFile(pkgbuildPath, 'utf8');
-  let changed = false;
+  const originalContent = content;
 
   const currentData = await parsePkgBuild(pkgbuildPath);
 
-  if (newVersion && currentData.pkgver !== newVersion) {
-    console.log(`[PKGBUILD] Updating pkgver from ${currentData.pkgver} to ${newVersion} (pkgrel=1)`);
-    content = content.replace(/^pkgver=.+$/m, `pkgver=${newVersion}`);
+  if (updates.pkgver && currentData.pkgver !== updates.pkgver) {
+    console.log(`[PKGBUILD] Updating pkgver from ${currentData.pkgver} to ${updates.pkgver} (pkgrel=1)`);
+    content = content.replace(/^pkgver=.+$/m, `pkgver=${updates.pkgver}`);
     content = content.replace(/^pkgrel=\d+$/m, `pkgrel=1`);
-    if (newEpoch && newEpoch !== "0") {
-       if (content.match(/^epoch=.+$/m)) {
-          console.log(`[PKGBUILD] Updating epoch to ${newEpoch}`);
-          content = content.replace(/^epoch=.+$/m, `epoch=${newEpoch}`);
-       } else {
-          console.log(`[PKGBUILD] Injecting new epoch ${newEpoch}`);
-          content = content.replace(/^pkgver=/m, `epoch=${newEpoch}\npkgver=`);
-       }
-    }
-    changed = true;
   } else if (forceBumpRel) {
     console.log(`[PKGBUILD] Bumping pkgrel from ${currentData.pkgrel} to ${currentData.pkgrel + 1}`);
     content = content.replace(/^pkgrel=\d+$/m, `pkgrel=${currentData.pkgrel + 1}`);
-    changed = true;
   }
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (key === 'pkgver' || key === 'pkgrel') continue;
+    if (key === 'epoch') {
+       if (!value || value === "0") continue;
+       if (content.match(/^epoch=.+$/m)) {
+          console.log(`[PKGBUILD] Updating epoch to ${value}`);
+          content = content.replace(/^epoch=.+$/m, `epoch=${value}`);
+       } else {
+          console.log(`[PKGBUILD] Injecting new epoch ${value}`);
+          content = content.replace(/^pkgver=/m, `epoch=${value}\npkgver=`);
+       }
+       continue;
+    }
+
+    const regex = new RegExp(`^${key}=.*$`, 'm');
+    if (content.match(regex)) {
+      console.log(`[PKGBUILD] Updating custom variable ${key}=${value}`);
+      content = content.replace(regex, `${key}=${value}`);
+    } else {
+      console.log(`[PKGBUILD] Injecting custom variable ${key}=${value}`);
+      content = content.replace(/^pkgver=/m, `${key}=${value}\npkgver=`);
+    }
+  }
+
+  const changed = content !== originalContent;
 
   if (changed) {
     await fs.writeFile(pkgbuildPath, content, 'utf8');

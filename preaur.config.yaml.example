@@ -80,8 +80,9 @@ packages:
     maintainer: johndoe
     checker:
       type: deb  
-      strip_version: true
-      url: https://repository.spotify.com
+      strip_version: false
+      template: '{~pkgver}.{~pkgver}.{~pkgver}.{~pkgver}.{_commit}'
+      url: 'https://repository.spotify.com'
       dist: testing 
       component: non-free
       arch: amd64
