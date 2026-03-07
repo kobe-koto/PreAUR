@@ -70,16 +70,16 @@ export async function updatePkgBuild(
 
   if (changed) {
     await fs.writeFile(pkgbuildPath, content, 'utf8');
-    
-    // Update checksums after saving changes
-    try {
-        const pkgbuildDir = path.dirname(pkgbuildPath);
-        console.log(`[PKGBUILD] Running updpkgsums in ${pkgbuildDir}...`);
-        await execAsync('updpkgsums', { cwd: pkgbuildDir });
-    } catch (e: any) {
-        console.error(`[PKGBUILD] Failed to run updpkgsums: ${e.message}`);
-        throw e;
-    }
+  }
+
+  // ALWAYS update checksums
+  try {
+      const pkgbuildDir = path.dirname(pkgbuildPath);
+      console.log(`[PKGBUILD] Running updpkgsums in ${pkgbuildDir}...`);
+      await execAsync('updpkgsums', { cwd: pkgbuildDir });
+  } catch (e: any) {
+      console.error(`[PKGBUILD] Failed to run updpkgsums: ${e.message}`);
+      throw e;
   }
 
   return changed;
