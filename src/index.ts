@@ -1,3 +1,5 @@
+#!/usr/bin/env bun
+
 import 'dotenv/config';
 import { Command } from 'commander';
 import * as path from 'node:path';
@@ -66,7 +68,7 @@ program
           // just let it build if new version.
 
           const pkgbuildPath = path.resolve(pkgDir, 'PKGBUILD');
-          
+
           await updateDynamicPkgver(pkgbuildPath);
 
           const currentData = await parsePkgBuild(pkgbuildPath).catch(e => {
