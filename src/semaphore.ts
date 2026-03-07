@@ -1,27 +1,27 @@
 export class Semaphore {
-  private permits: number;
-  private queue: (() => void)[] = [];
+    private permits: number;
+    private queue: (() => void)[] = [];
 
-  constructor(permits: number) {
-    this.permits = permits > 0 ? permits : 1;
-  }
-
-  async acquire(): Promise<void> {
-    if (this.permits > 0) {
-      this.permits--;
-      return Promise.resolve();
+    constructor(permits: number) {
+        this.permits = permits > 0 ? permits : 1;
     }
-    return new Promise<void>(resolve => {
-      this.queue.push(resolve);
-    });
-  }
 
-  release(): void {
-    if (this.queue.length > 0) {
-      const resolve = this.queue.shift()!;
-      resolve();
-    } else {
-      this.permits++;
+    async acquire(): Promise<void> {
+        if (this.permits > 0) {
+            this.permits--;
+            return Promise.resolve();
+        }
+        return new Promise<void>(resolve => {
+            this.queue.push(resolve);
+        });
     }
-  }
+
+    release(): void {
+        if (this.queue.length > 0) {
+            const resolve = this.queue.shift()!;
+            resolve();
+        } else {
+            this.permits++;
+        }
+    }
 }
