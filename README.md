@@ -1,6 +1,6 @@
-# 📦 preaur 📦
+# 📦 PreAUR 📦
 
-**PreAUR** is an automated Arch Linux AUR (not only) package builder and maintainer written in TypeScript. 
+**PreAUR** is an automated Arch Linux AUR (not only) package builder and maintainer (kinda) written in TypeScript. 
 
 It streamlines the process of fetching, updating, building, and publishing packages, while automatically maintaining a local pacman repository.
 
@@ -14,19 +14,13 @@ It streamlines the process of fetching, updating, building, and publishing packa
 
 ## Getting Started
 
-### Prerequisites
-
-- [Bun](https://bun.sh/) runtime installed.
-- Arch Linux build tools (`base-devel`, `devtools`).
-
 ### Installation
 
 Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/kobe-koto/preaur.git
-cd preaur
-bun install
+paru -S preaur-git # Recommended because i like it
+paru -S preaur-bin
 ```
 
 ### Configuration
@@ -69,7 +63,7 @@ bun run src/index.ts -c custom.config.yaml
 
 ## Deploying & Scheduled Runs
 
-`preaur` is designed to be fully headless.
+PreAUR is designed with headless in mind.
 
 ### Configure Passwordless Sudo
 Builders like `extra-x86_64-build` invoke `sudo` internally to spawn clean chroots. To prevent `preaur` from hanging while waiting for a password in a background task, you must allow your user to execute the build scripts without a password.
@@ -83,41 +77,43 @@ preaur ALL=(ALL) NOPASSWD: /usr/bin/extra-x86_64-build, /usr/bin/multilib-build,
 
 ### Set Up the Scheduler
 
-**Using Systemd Timers **
+**Using Systemd Timers**
 
-*1. Create a service file:*
-`~/.config/systemd/user/preaur.service`
+1. Create a service file:
+   `~/.config/systemd/user/preaur.service`
 
-```ini
-[Unit]
-Description=PreAUR Automated Package Builder
+   ```ini
+   [Unit]
+   Description=PreAUR Automated Package Builder
+   
+   [Service]
+   Type=oneshot
+   WorkingDirectory=%h/preaur
+   ExecStart=/usr/bin/bun run src/index.ts
+   ```
 
-[Service]
-Type=oneshot
-WorkingDirectory=%h/preaur
-ExecStart=/usr/bin/bun run src/index.ts
-```
+2. Create a timer file:
+   `~/.config/systemd/user/preaur.timer`
 
-*2. Create a timer file:*
-`~/.config/systemd/user/preaur.timer`
-```ini
-[Unit]
-Description=Run PreAUR Daily
+   ```ini
+   [Unit]
+   Description=Run PreAUR Daily
+   
+   [Timer]
+   OnCalendar=*-*-* 2:00:00 # daily, 2 a.m.
+   OnCalendar=*-*-* 13:00:00 # daily, 1 p.m.
+   Persistent=true
+   
+   [Install]
+   WantedBy=timers.target
+   ```
 
-[Timer]
-OnCalendar=daily
-Persistent=true
+3. Enable the timer:
 
-[Install]
-WantedBy=timers.target
-```
-
-*3. Enable the timer:*
-
-```bash
-systemctl --user daemon-reload
-systemctl --user enable --now preaur.timer
-```
+   ```bash
+   systemctl --user daemon-reload
+   systemctl --user enable --now preaur.timer
+   ```
 
 ## Cleaning Outdated Packages
 
