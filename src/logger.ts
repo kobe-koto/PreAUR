@@ -1,7 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 let sessionLogDir = '';
+
+export const loggerContext = new AsyncLocalStorage<fs.WriteStream>();
 
 function formatTimestamp(): string {
     const d = new Date();
@@ -36,19 +39,37 @@ export function initMainLogger(baseDir: string = process.cwd()) {
 
     console.log = (...args: any[]) => {
         const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-        originalLog(msg);
+        const taskStream = loggerContext.getStore();
+        if (taskStream) {
+            taskStream.write(msg + '\n');
+        }
+        if (process.stdout.isTTY || !taskStream) {
+            originalLog(msg);
+        }
         mainStream.write(msg + '\n');
     };
 
     console.error = (...args: any[]) => {
         const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-        originalError(msg);
+        const taskStream = loggerContext.getStore();
+        if (taskStream) {
+            taskStream.write(msg + '\n');
+        }
+        if (process.stdout.isTTY || !taskStream) {
+            originalError(msg);
+        }
         mainStream.write(msg + '\n');
     };
 
     console.warn = (...args: any[]) => {
         const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-        originalWarn(msg);
+        const taskStream = loggerContext.getStore();
+        if (taskStream) {
+            taskStream.write(msg + '\n');
+        }
+        if (process.stdout.isTTY || !taskStream) {
+            originalWarn(msg);
+        }
         mainStream.write(msg + '\n');
     };
 
