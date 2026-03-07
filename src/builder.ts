@@ -59,6 +59,7 @@ export async function buildPackage(
             env: {
                 ...process.env,
                 MAKEFLAGS: `-j${nproc}`,
+                COMPRESSZST: `zstd -c -T${nproc} -`,
             }
         });
 
