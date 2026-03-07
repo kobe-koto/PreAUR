@@ -85,11 +85,15 @@ program
           );
 
           let newVersion: string | null = null;
+          let newEpoch: string | undefined = undefined;
+
           if (pkg.checker) {
             console.log(`[Checker] Checking version using ${pkg.checker.type} provider for ${pkg.pkgname}...`);
-            newVersion = await fetchLatestVersion(pkg.checker);
-            if (newVersion) {
-              console.log(`[Checker] Latest version for ${pkg.pkgname} is v${newVersion}`);
+            const checkerRes = await fetchLatestVersion(pkg.checker);
+            if (checkerRes) {
+              newVersion = checkerRes.version;
+              newEpoch = checkerRes.epoch;
+              console.log(`[Checker] Latest version for ${pkg.pkgname} is v${newVersion}${newEpoch ? ` (epoch: ${newEpoch})` : ''}`);
             } else {
               console.log(`[Checker] Could not ascertain latest version for ${pkg.pkgname}.`);
             }
@@ -109,7 +113,7 @@ program
           }
 
           const builderType = pkg.builder || 'extra-x86_64-build';
-          const pkgbuildModified = await updatePkgBuild(pkgbuildPath, newVersion, needsRelBump);
+          const pkgbuildModified = await updatePkgBuild(pkgbuildPath, newVersion, newEpoch, needsRelBump);
           const finalData = await parsePkgBuild(pkgbuildPath);
 
           let shouldBuild = true;

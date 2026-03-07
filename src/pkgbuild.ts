@@ -16,13 +16,13 @@ export async function parsePkgBuild(pkgbuildPath: string): Promise<PkgBuildData>
   const pkgverMatch = content.match(/^pkgver=(.+)$/m);
   const pkgrelMatch = content.match(/^pkgrel=(\d+)$/m);
   
-  if (!pkgverMatch || !pkgrelMatch) {
+  if (!pkgverMatch || !pkgverMatch[1] || !pkgrelMatch || !pkgrelMatch[1]) {
     throw new Error('Could not parse pkgver or pkgrel from PKGBUILD');
   }
 
   return {
-    pkgver: pkgverMatch[1],
-    pkgrel: parseInt(pkgrelMatch[1], 10),
+    pkgver: pkgverMatch[1] as string,
+    pkgrel: parseInt(pkgrelMatch[1] as string, 10),
   };
 }
 
@@ -50,6 +50,7 @@ export async function updateDynamicPkgver(pkgbuildPath: string): Promise<boolean
 export async function updatePkgBuild(
   pkgbuildPath: string, 
   newVersion: string | null,
+  newEpoch?: string | null,
   forceBumpRel: boolean = false
 ): Promise<boolean> {
   let content = await fs.readFile(pkgbuildPath, 'utf8');
@@ -61,6 +62,15 @@ export async function updatePkgBuild(
     console.log(`[PKGBUILD] Updating pkgver from ${currentData.pkgver} to ${newVersion} (pkgrel=1)`);
     content = content.replace(/^pkgver=.+$/m, `pkgver=${newVersion}`);
     content = content.replace(/^pkgrel=\d+$/m, `pkgrel=1`);
+    if (newEpoch && newEpoch !== "0") {
+       if (content.match(/^epoch=.+$/m)) {
+          console.log(`[PKGBUILD] Updating epoch to ${newEpoch}`);
+          content = content.replace(/^epoch=.+$/m, `epoch=${newEpoch}`);
+       } else {
+          console.log(`[PKGBUILD] Injecting new epoch ${newEpoch}`);
+          content = content.replace(/^pkgver=/m, `epoch=${newEpoch}\npkgver=`);
+       }
+    }
     changed = true;
   } else if (forceBumpRel) {
     console.log(`[PKGBUILD] Bumping pkgrel from ${currentData.pkgrel} to ${currentData.pkgrel + 1}`);

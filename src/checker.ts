@@ -26,15 +26,20 @@ function compareVersions(v1: string, v2: string): number {
   return 0;
 }
 
+export interface CheckerResult {
+  version: string;
+  epoch?: string;
+}
+
 export interface CheckerProvider {
   name: string;
-  check(config: PreaurChecker): Promise<string>;
+  check(config: PreaurChecker): Promise<CheckerResult>;
 }
 
 export class GitHubProvider implements CheckerProvider {
   name = 'github';
 
-  async check(config: PreaurChecker): Promise<string> {
+  async check(config: PreaurChecker): Promise<CheckerResult> {
     const { repo, use } = config;
     if (!repo) throw new Error('GitHub provider requires a "repo" configuration.');
 
@@ -84,7 +89,7 @@ export class GitHubProvider implements CheckerProvider {
         tag = tag.replace(/[:/\-\s]/g, '_');
       }
 
-      return tag;
+      return { version: tag };
     } catch (error: any) {
       console.error(`[Checker] Failed to fetch version from GitHub for ${repo}: ${error.message}`);
       throw error;
@@ -95,7 +100,7 @@ export class GitHubProvider implements CheckerProvider {
 export class DebProvider implements CheckerProvider {
   name = 'deb';
 
-  async check(config: PreaurChecker): Promise<string> {
+  async check(config: PreaurChecker): Promise<CheckerResult> {
     const { url, pkg, dist, component, arch = 'amd64' } = config;
     if (!url || !pkg || !dist || !component) {
       throw new Error('Deb provider requires "url", "pkg", "dist", and "component" configuration.');
@@ -127,30 +132,40 @@ export class DebProvider implements CheckerProvider {
     const blocks = data.split(/\n\s*\n/);
     let latestVersion = '';
 
+    let latestEpoch: string | undefined = undefined;
+
     for (const block of blocks) {
       const pkgMatch = block.match(/^Package:\s*(.+)$/m);
       if (pkgMatch && pkgMatch[1]?.trim() === pkg) {
         const verMatch = block.match(/^Version:\s*(.+)$/m);
         if (verMatch && verMatch[1]) {
           let version = verMatch[1].trim();
+          let epoch: string | undefined = undefined;
+
+          const epochMatch = version.match(/^(\d+):/);
+          if (epochMatch) {
+            epoch = epochMatch[1];
+            version = version.substring(epochMatch[0].length);
+          }
+
           // Arch Linux packages usually replace hyphens with underscores
           // e.g., 1.86.0-1706698114 -> 1.86.0_1706698114
           version = version.replace(/-/g, '_');
-          // Optional: strip epochs if any (e.g. 1:1.86.0 -> 1.86.0)
-          version = version.replace(/^\d+:/, '');
           
-          if (!latestVersion || compareVersions(version, latestVersion) > 0) {
+          if (!latestVersion || compareVersions(version, latestVersion) > 0 || (version === latestVersion && epoch && (!latestEpoch || parseInt(epoch, 10) > parseInt(latestEpoch, 10)))) {
             latestVersion = version;
+            latestEpoch = epoch;
           }
         }
       }
     }
 
     if (latestVersion) {
+      let finalVersion = latestVersion;
       if (config.strip_version) {
-        return latestVersion.split(/[-_]/)[0] || latestVersion;
+        finalVersion = finalVersion.split(/[-_]/)[0] || finalVersion;
       }
-      return latestVersion;
+      return { version: finalVersion, epoch: latestEpoch };
     }
 
     throw new Error(`Package ${pkg} not found in Debian repository.`);
@@ -160,7 +175,7 @@ export class DebProvider implements CheckerProvider {
 export class RpmProvider implements CheckerProvider {
   name = 'rpm';
 
-  async check(config: PreaurChecker): Promise<string> {
+  async check(config: PreaurChecker): Promise<CheckerResult> {
     const { url, pkg } = config;
     if (!url || !pkg) {
       throw new Error('Rpm provider requires "url" and "pkg" configuration.');
@@ -195,38 +210,46 @@ export class RpmProvider implements CheckerProvider {
       throw new Error(`Failed to fetch primary.xml.gz from ${primaryUrl}: ${dbErr.message}`);
     }
 
-    // Parse chunks of package blocks to avoid crazy regex traversal
     const packageBlocks = primaryXml.split('</package>');
     let latestVersion = '';
+    let latestEpoch: string | undefined = undefined;
 
     const escapedPkg = pkg.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
     const nameRegex = new RegExp(`<name>${escapedPkg}</name>`);
-    const versionRegex = /<version[^>]+ver="([^"]+)"(?:[^>]+rel="([^"]+)")?[^>]*\/>/;
+    const versionRegex = /<version\s+([^>]+)\/?>/;
 
     for (const block of packageBlocks) {
       if (nameRegex.test(block)) {
         const match = block.match(versionRegex);
         if (match && match[1]) {
-          let version = match[1];
-          // optionally, we append the rel version replacing hyphens
-          if (match[2]) {
-              version += `_${match[2].replace(/-/g, '_')}`;
-          }
-          // replace any internal hyphens with underscores
-          version = version.replace(/-/g, '_');
+          const attrs = match[1];
+          const verMatch = attrs.match(/ver="([^"]+)"/);
+          const relMatch = attrs.match(/rel="([^"]+)"/);
+          const epochMatch = attrs.match(/epoch="([^"]+)"/);
 
-          if (!latestVersion || compareVersions(version, latestVersion) > 0) {
-             latestVersion = version;
+          if (verMatch && verMatch[1]) {
+            let version = verMatch[1];
+            if (relMatch && relMatch[1]) {
+                version += `_${relMatch[1].replace(/-/g, '_')}`;
+            }
+            version = version.replace(/-/g, '_');
+            let epoch = epochMatch && epochMatch[1] && epochMatch[1] !== '0' ? epochMatch[1] : undefined;
+
+            if (!latestVersion || compareVersions(version, latestVersion) > 0 || (version === latestVersion && epoch && (!latestEpoch || parseInt(epoch, 10) > parseInt(latestEpoch, 10)))) {
+               latestVersion = version;
+               latestEpoch = epoch;
+            }
           }
         }
       }
     }
     
     if (latestVersion) {
+      let finalVersion = latestVersion;
       if (config.strip_version) {
-        return latestVersion.split(/[-_]/)[0] || latestVersion;
+        finalVersion = finalVersion.split(/[-_]/)[0] || finalVersion;
       }
-      return latestVersion;
+      return { version: finalVersion, epoch: latestEpoch };
     }
 
     throw new Error(`Package ${pkg} not found in RPM repository.`);
@@ -250,7 +273,7 @@ checkerRegistry.register(new GitHubProvider());
 checkerRegistry.register(new DebProvider());
 checkerRegistry.register(new RpmProvider());
 
-export async function fetchLatestVersion(config: PreaurChecker): Promise<string | null> {
+export async function fetchLatestVersion(config: PreaurChecker): Promise<CheckerResult | null> {
   const provider = checkerRegistry.get(config.type);
   if (!provider) {
     console.warn(`[Checker] Unknown checker type: ${config.type}`);

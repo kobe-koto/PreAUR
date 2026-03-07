@@ -75,3 +75,15 @@ packages:
       strip_version: true # no pkgrel will be passed
       url: "https://packages.microsoft.com/yumrepos/vscode"
       pkg: "code"
+
+  - pkgname: spotify
+    maintainer: johndoe
+    checker:
+      type: deb  
+      strip_version: true
+      url: https://repository.spotify.com
+      dist: testing 
+      component: non-free
+      arch: amd64
+      pkg: spotify-client
+
