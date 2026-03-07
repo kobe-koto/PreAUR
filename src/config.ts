@@ -18,8 +18,22 @@ export interface PreaurRepo {
 
 export interface PreaurChecker {
   type: string;
-  repo: string;
+  
+  // Generic
+  strip_version?: boolean;
+
+  // GitHub
+  repo?: string;
   use?: 'release' | 'prerelease' | string;
+  prefix?: string;
+  suffix?: string;
+
+  // Deb / RPM providers
+  url?: string;
+  pkg?: string;
+  dist?: string;
+  component?: string;
+  arch?: string;
 }
 
 export interface PreaurPackage {

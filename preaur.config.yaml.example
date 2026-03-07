@@ -25,6 +25,8 @@ packages:
       type: "github" # Version query provider
       repo: "uiriansan/LainGrubTheme"
       use: "release" # Set to 'prerelease' if using beta tags
+      # prefix: "app-release-" # remove prefix if not needed
+      # suffix: "_beta" # remove suffix if not needed
     push: true # Automatically git commit and push back to AUR on success
     builder: "extra-x86_64-build" # Specific build executable. Can use "pkgctl build" if preferred! Defaults to extra-x86_64-build
 
@@ -34,3 +36,24 @@ packages:
     # Notice: No checker is needed here.
     # preaur automatically detects the `pkgver()` bash block
     # and invokes `makepkg -odc` to pull the latest commits and dynamically set the package version.
+
+  # Debian/APT repository mapped package
+  - pkgname: "visual-studio-code-bin"
+    maintainer: "johndoe"
+    checker:
+      type: "deb"
+      strip_version: true # no pkgrel will be passed
+      url: "https://packages.microsoft.com/repos/vscode"
+      dist: "stable"
+      component: "main"
+      arch: "amd64"
+      pkg: "code"
+
+  # RPM/Yum repository mapped package example
+  - pkgname: "visual-studio-code-electron-bin"
+    maintainer: "johndoe"
+    checker:
+      type: "rpm"
+      strip_version: true # no pkgrel will be passed
+      url: "https://packages.microsoft.com/yumrepos/vscode"
+      pkg: "code"
