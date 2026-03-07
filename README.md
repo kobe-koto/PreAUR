@@ -17,7 +17,7 @@ It streamlines the process of fetching, updating, building, and publishing packa
 ### Prerequisites
 
 - [Bun](https://bun.sh/) runtime installed.
-- Arch Linux build tools (e.g., `base-devel`, `devtools`).
+- Arch Linux build tools (`base-devel`, `devtools`).
 
 ### Installation
 
@@ -33,7 +33,7 @@ bun install
 
 Preaur relies on a configuration file to run. 
 
-Please see the [`preaur.config.yaml.example`](./preaur.config.yaml.example) file for a complete example configuration. This file controls maintainer info, CPU resource allocation, output repository details, and individual package definitions.
+Please see the [`preaur.config.yaml.example`](./preaur.config.yaml.example) file for a complete example configuration.
 
 Ensure you copy this file to `preaur.config.yaml` before running the CLI:
 
@@ -50,7 +50,7 @@ Please see the [`.env.example`](./.env.example) file. Copy it to `.env` and prov
 cp .env.example .env
 ```
 
-## 🛠️ Usage
+## Usage
 
 Run the preaur CLI orchestrator:
 
@@ -59,10 +59,68 @@ Run the preaur CLI orchestrator:
 bun run src/index.ts
 
 # Process only a specific package
-bun run src/index.ts -p fluent-lyrics-bin
+bun run src/index.ts -p some-pkg-bin
 
 # Specify a custom config file
 bun run src/index.ts -c custom.config.yaml
 ```
 
 *Built packages and databases will be deposited in the `./repo/<repo.name>/` directory.*
+
+## Deploying & Scheduled Runs
+
+`preaur` is designed to be fully headless.
+
+### Configure Passwordless Sudo
+Builders like `extra-x86_64-build` invoke `sudo` internally to spawn clean chroots. To prevent `preaur` from hanging while waiting for a password in a background task, you must allow your user to execute the build scripts without a password.
+
+Run `sudo visudo` and append your privileges. If your user is under the `wheel` group natively, you can whitelist the builder executables specifically for your user:
+
+```sudoers
+# Replace 'preaur' with your linux username if not
+preaur ALL=(ALL) NOPASSWD: /usr/bin/extra-x86_64-build, /usr/bin/multilib-build, /usr/bin/pkgctl
+```
+
+### Set Up the Scheduler
+
+**Using Systemd Timers **
+
+*1. Create a service file:*
+`~/.config/systemd/user/preaur.service`
+
+```ini
+[Unit]
+Description=PreAUR Automated Package Builder
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/preaur
+ExecStart=/usr/bin/bun run src/index.ts
+```
+
+*2. Create a timer file:*
+`~/.config/systemd/user/preaur.timer`
+```ini
+[Unit]
+Description=Run PreAUR Daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+*3. Enable the timer:*
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now preaur.timer
+```
+
+## Cleaning Outdated Packages
+
+PreAUR hasn't implemented this feature and likely never will, because removing outdated packages is not the builder's job. 
+
+You can check out my [arch-repo-cleaner](https://github.com/kobe-koto/arch-repo-cleaner), however.
