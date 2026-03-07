@@ -161,6 +161,9 @@ program
             if (alreadyBuilt) {
               console.log(`[Preaur] Package ${pkg.pkgname}-${finalData.pkgver}-${finalData.pkgrel} already exists in repo. Skipping build.`);
               shouldBuild = false;
+            } else if (!shouldBuild) {
+              console.log(`[Preaur] Package ${pkg.pkgname}-${finalData.pkgver}-${finalData.pkgrel} not found in repo, forcing build.`);
+              shouldBuild = true;
             }
           }
 
