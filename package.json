@@ -2,7 +2,7 @@
   "name": "preaur",
   "module": "src/index.ts",
   "type": "module",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "scripts": {
     "start": "bun run src/index.ts",
     "build": "bun build ./src/index.ts --target bun --outdir ./dist --minify"
