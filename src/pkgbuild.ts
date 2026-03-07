@@ -6,6 +6,7 @@ import * as path from 'node:path';
 const execAsync = promisify(exec);
 
 export interface PkgBuildData {
+  epoch?: string;
   pkgver: string;
   pkgrel: number;
 }
@@ -16,12 +17,15 @@ export async function parsePkgBuild(pkgbuildPath: string): Promise<PkgBuildData>
   const pkgverMatch = content.match(/^pkgver=(.+)$/m);
   const pkgrelMatch = content.match(/^pkgrel=(\d+)$/m);
   
+  const epochMatch = content.match(/^epoch=(\d+)$/m);
+  
   if (!pkgverMatch || !pkgverMatch[1] || !pkgrelMatch || !pkgrelMatch[1]) {
     throw new Error('Could not parse pkgver or pkgrel from PKGBUILD');
   }
 
   return {
-    pkgver: pkgverMatch[1] as string,
+    epoch: epochMatch && epochMatch[1] ? epochMatch[1] : undefined,
+    pkgver: (pkgverMatch[1] as string).replace(/^['"]|['"]$/g, ''),
     pkgrel: parseInt(pkgrelMatch[1] as string, 10),
   };
 }

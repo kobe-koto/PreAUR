@@ -14,6 +14,7 @@ import { createDummyPackages } from './dummy';
 import { manageRepository, hasBuiltPackage, resolveBuiltPackage } from './repo';
 import { initMainLogger, createTaskLogger } from './logger';
 import { Semaphore } from './semaphore';
+import { VersionStore } from './version_store';
 
 const program = new Command();
 
@@ -39,6 +40,9 @@ program
         console.log('[Preaur] No packages to process.');
         return;
       }
+
+      const versionStore = new VersionStore(process.cwd());
+      await versionStore.load();
 
       const rawParallel = config.resources?.parallel || 2;
       const parallelLimit = typeof rawParallel === 'string' ? parseInt(rawParallel, 10) : rawParallel;
@@ -99,24 +103,40 @@ program
             }
           }
 
+          // Read PKGBUILD before any dynamic changes to ensure we have initial state if needed
           const pkgbuildPath = path.resolve(pkgDir, 'PKGBUILD');
-          await updateDynamicPkgver(pkgbuildPath);
-
           const currentData = await parsePkgBuild(pkgbuildPath).catch(e => {
             console.warn(`[PKGBUILD] Failed to parse initial PKGBUILD for ${pkg.pkgname}: ${e.message}`);
             return null;
           });
 
-          let needsRelBump = false;
-          if (!newVersion || (currentData && currentData.pkgver === newVersion)) {
-             // Intricate to detect pull changes accurately without massive git status parsing
+          let localData = versionStore.get(pkg.pkgname);
+          // If not in local store, sync PKGBUILD into local
+          if (!localData && currentData) {
+            versionStore.set(pkg.pkgname, currentData);
+            await versionStore.save();
+            localData = currentData;
           }
 
+          await updateDynamicPkgver(pkgbuildPath);
+
+          let needsRelBump = false;
+          // In case of git packages, their checking is embedded in makepkg. If checker was specified, use that explicitly.
           const builderType = pkg.builder || 'extra-x86_64-build';
           const pkgbuildModified = await updatePkgBuild(pkgbuildPath, newVersion, newEpoch, needsRelBump);
           const finalData = await parsePkgBuild(pkgbuildPath);
 
-          let shouldBuild = true;
+          let updateFound = false;
+          if (localData) {
+             if (finalData.epoch !== localData.epoch || finalData.pkgver !== localData.pkgver || finalData.pkgrel !== localData.pkgrel) {
+                updateFound = true;
+                console.log(`[Preaur] Update detected: local(${localData.epoch ? localData.epoch+':' : ''}${localData.pkgver}-${localData.pkgrel}) -> new(${finalData.epoch ? finalData.epoch+':' : ''}${finalData.pkgver}-${finalData.pkgrel})`);
+             }
+          } else {
+             updateFound = true;
+          }
+
+          let shouldBuild = updateFound;
           if (config.repo) {
             const alreadyBuilt = await hasBuiltPackage(config.repo, pkg.pkgname, finalData.pkgver, finalData.pkgrel, process.cwd());
             if (alreadyBuilt) {
@@ -161,6 +181,12 @@ program
             if (config.repo) {
               await manageRepository(config.repo, pkgDir, process.cwd());
             }
+
+            // Sync successful build variables
+            versionStore.set(pkg.pkgname, finalData);
+            await versionStore.save();
+          } else {
+            console.log(`[Preaur] Skipping build map execution for ${pkg.pkgname} since shouldBuild=false.`);
           }
 
         } catch (pkgError: any) {
