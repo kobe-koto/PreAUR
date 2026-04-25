@@ -28,11 +28,13 @@ export async function buildPackage(
     builder: string = 'extra-x86_64-build',
     resources?: PreaurResources,
     dummyPkgs?: string[],
-    logStream?: fs.WriteStream
+    logStream?: fs.WriteStream,
+    chrootWorker?: string
 ): Promise<void> {
     const nproc = calculateNproc(resources?.cpu);
 
-    console.log(`[Builder] Starting build for ${path.basename(pkgDir)} using ${builder} with MAKEFLAGS="-j${nproc}"`);
+    const workerInfo = chrootWorker ? ` chroot=[${chrootWorker}]` : '';
+    console.log(`[Builder] Starting build for ${path.basename(pkgDir)} using ${builder} with MAKEFLAGS="-j${nproc}"${workerInfo}`);
 
     return new Promise((resolve, reject) => {
         // Determine the command and arguments. `extra-x86_64-build` usually takes no required args
@@ -44,10 +46,28 @@ export async function buildPackage(
             return;
         }
 
+        // For devtools *-build commands, extra arguments are passed to makechrootpkg
+        // via `-- <makechrootpkg_args>`. We need to collect those separately.
+        const isDevtoolsBuild = cmd.endsWith('-build');
+        const makechrootpkgArgs: string[] = [];
+
+        // Assign a unique chroot copy name so parallel builds don't block each other
+        if (chrootWorker && isDevtoolsBuild) {
+            makechrootpkgArgs.push('-l', chrootWorker);
+        }
+
+        // Inject dummy/repo dependency packages via -I
         if (dummyPkgs && dummyPkgs.length > 0) {
-            if (cmd.endsWith('-build')) {
-                args.push('--');
+            for (const p of dummyPkgs) {
+                makechrootpkgArgs.push('-I', p);
             }
+        }
+
+        // Append the `--` separator and makechrootpkg args if needed
+        if (isDevtoolsBuild && makechrootpkgArgs.length > 0) {
+            args.push('--', ...makechrootpkgArgs);
+        } else if (!isDevtoolsBuild && dummyPkgs && dummyPkgs.length > 0) {
+            // Non-devtools builder: just pass -I directly
             for (const p of dummyPkgs) {
                 args.push('-I', p);
             }

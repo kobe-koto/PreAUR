@@ -14,6 +14,7 @@ import { createDummyPackages } from './dummy';
 import { manageRepository, hasBuiltPackage, resolveBuiltPackage } from './repo';
 import { initMainLogger, createTaskLogger, loggerContext } from './logger';
 import { Semaphore } from './semaphore';
+import { ChrootPool } from './chroot_pool';
 import { VersionStore } from './version_store';
 
 const program = new Command();
@@ -46,7 +47,9 @@ program
 
             const rawParallel = config.resources?.parallel || 2;
             const parallelLimit = typeof rawParallel === 'string' ? parseInt(rawParallel, 10) : rawParallel;
-            const pool = new Semaphore(isNaN(parallelLimit) ? 2 : parallelLimit);
+            const effectiveParallel = isNaN(parallelLimit) ? 2 : parallelLimit;
+            const pool = new Semaphore(effectiveParallel);
+            const chrootPool = new ChrootPool(effectiveParallel);
 
             const pkgResolvers = new Map<string, () => void>();
             const pkgPromises = new Map<string, Promise<void>>();
@@ -190,8 +193,14 @@ program
                                 extraPaths.push(...dummyPkgs);
                             }
 
-                            // Execute build
-                            await buildPackage(pkgDir, builderType, config.resources, extraPaths, loggerStream);
+                            // Execute build — acquire a chroot worker for unique copy name
+                            const isDevtoolsBuild = builderType.split(' ')[0]?.endsWith('-build') ?? false;
+                            const chrootWorker = isDevtoolsBuild ? await chrootPool.acquire() : undefined;
+                            try {
+                                await buildPackage(pkgDir, builderType, config.resources, extraPaths, loggerStream, chrootWorker);
+                            } finally {
+                                if (chrootWorker) chrootPool.release(chrootWorker);
+                            }
 
                             const status = await git.status();
                             const hasGitChanges = status.files.length > 0;
