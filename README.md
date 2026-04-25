@@ -119,4 +119,4 @@ preaur ALL=(ALL) NOPASSWD: /usr/bin/extra-x86_64-build, /usr/bin/multilib-build,
 
 PreAUR hasn't implemented this feature and likely never will, because removing outdated packages is not the builder's job. 
 
-You can check out my [arch-repo-cleaner](https://github.com/kobe-koto/arch-repo-cleaner), however.
+You can check out my [archavenger](https://github.com/kobe-koto/archavenger), however.
