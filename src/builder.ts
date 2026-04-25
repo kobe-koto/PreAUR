@@ -23,14 +23,27 @@ export function calculateNproc(cpuConfig?: string): number {
     }
 }
 
-export async function buildPackage(
-    pkgDir: string,
-    builder: string = 'extra-x86_64-build',
-    resources?: PreaurResources,
-    dummyPkgs?: string[],
-    logStream?: fs.WriteStream,
-    chrootWorker?: string
-): Promise<void> {
+export interface BuildOptions {
+    pkgDir: string;
+    builder?: string;
+    resources?: PreaurResources;
+    dummyPkgs?: string[];
+    logStream?: fs.WriteStream;
+    chrootWorker?: string;
+    packager?: string;
+}
+
+export async function buildPackage(opts: BuildOptions): Promise<void> {
+    const {
+        pkgDir,
+        builder = 'extra-x86_64-build',
+        resources,
+        dummyPkgs,
+        logStream,
+        chrootWorker,
+        packager,
+    } = opts;
+
     const nproc = calculateNproc(resources?.cpu);
 
     const workerInfo = chrootWorker ? ` chroot=[${chrootWorker}]` : '';
@@ -73,14 +86,20 @@ export async function buildPackage(
             }
         }
 
+        const env: Record<string, string> = {
+            ...process.env as Record<string, string>,
+            MAKEFLAGS: `-j${nproc}`,
+            COMPRESSZST: `zstd -c -T${nproc} -`,
+        };
+
+        if (packager) {
+            env.PACKAGER = packager;
+        }
+
         const buildProcess = spawn(cmd, args, {
             cwd: pkgDir,
             stdio: logStream ? ['ignore', 'pipe', 'pipe'] : 'inherit',
-            env: {
-                ...process.env,
-                MAKEFLAGS: `-j${nproc}`,
-                COMPRESSZST: `zstd -c -T${nproc} -`,
-            }
+            env,
         });
 
         if (logStream && buildProcess.stdout && buildProcess.stderr) {

@@ -196,8 +196,23 @@ program
                             // Execute build — acquire a chroot worker for unique copy name
                             const isDevtoolsBuild = builderType.split(' ')[0]?.endsWith('-build') ?? false;
                             const chrootWorker = isDevtoolsBuild ? await chrootPool.acquire() : undefined;
+
+                            // Resolve PACKAGER from maintainer config
+                            const maintainer = config.maintainers.find(m => m.id === pkg.maintainer);
+                            const packager = maintainer
+                                ? `PreAUR (on behalf of ${maintainer.name}) <${maintainer.email}>`
+                                : undefined;
+
                             try {
-                                await buildPackage(pkgDir, builderType, config.resources, extraPaths, loggerStream, chrootWorker);
+                                await buildPackage({
+                                    pkgDir,
+                                    builder: builderType,
+                                    resources: config.resources,
+                                    dummyPkgs: extraPaths,
+                                    logStream: loggerStream,
+                                    chrootWorker,
+                                    packager,
+                                });
                             } finally {
                                 if (chrootWorker) chrootPool.release(chrootWorker);
                             }
