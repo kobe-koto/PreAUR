@@ -11,6 +11,8 @@ export interface PkgBuildData {
     pkgrel: number;
 }
 
+export type PkgBuildParser = 'native' | 'makepkg';
+
 function shellQuote(s: string): string {
     return `'${s.replace(/'/g, `'\\''`)}'`;
 }
@@ -32,7 +34,7 @@ async function evalPkgBuildVars(pkgbuildPath: string): Promise<{ epoch?: string;
     };
 }
 
-export async function parsePkgBuild(pkgbuildPath: string): Promise<PkgBuildData> {
+async function parsePkgBuildNative(pkgbuildPath: string): Promise<PkgBuildData> {
     const content = await fs.readFile(pkgbuildPath, 'utf8');
 
     const stripQuotes = (s: string) => s.replace(/^['"]|['"]$/g, '').trim();
@@ -74,6 +76,36 @@ export async function parsePkgBuild(pkgbuildPath: string): Promise<PkgBuildData>
     return { epoch, pkgver, pkgrel };
 }
 
+async function parsePkgBuildMakepkg(pkgbuildPath: string): Promise<PkgBuildData> {
+    const pkgbuildDir = path.dirname(pkgbuildPath);
+    const { stdout } = await execAsync('makepkg --printsrcinfo', { cwd: pkgbuildDir });
+
+    const fields: Record<string, string> = {};
+    for (const line of stdout.split('\n')) {
+        const match = line.match(/^\s*(epoch|pkgver|pkgrel)\s*=\s*(.+)$/);
+        if (match && match[1] && match[2] && fields[match[1]] === undefined) {
+            fields[match[1]] = match[2].trim();
+        }
+    }
+
+    if (!fields.pkgver || !fields.pkgrel) {
+        throw new Error('Could not parse pkgver or pkgrel from makepkg --printsrcinfo');
+    }
+
+    const pkgrel = parseInt(fields.pkgrel, 10);
+    if (isNaN(pkgrel)) {
+        throw new Error(`Could not parse pkgrel from makepkg --printsrcinfo (got "${fields.pkgrel}")`);
+    }
+
+    return { epoch: fields.epoch, pkgver: fields.pkgver, pkgrel };
+}
+
+export async function parsePkgBuild(pkgbuildPath: string, parser: PkgBuildParser = 'native'): Promise<PkgBuildData> {
+    return parser === 'makepkg'
+        ? parsePkgBuildMakepkg(pkgbuildPath)
+        : parsePkgBuildNative(pkgbuildPath);
+}
+
 export async function updateDynamicPkgver(pkgbuildPath: string): Promise<boolean> {
     const content = await fs.readFile(pkgbuildPath, 'utf8');
     if (!content.match(/^pkgver\(\)\s*\{/m)) {
@@ -98,12 +130,13 @@ export async function updateDynamicPkgver(pkgbuildPath: string): Promise<boolean
 export async function updatePkgBuild(
     pkgbuildPath: string,
     updates: Record<string, string>,
-    forceBumpRel: boolean = false
+    forceBumpRel: boolean = false,
+    parser: PkgBuildParser = 'native'
 ): Promise<boolean> {
     let content = await fs.readFile(pkgbuildPath, 'utf8');
     const originalContent = content;
 
-    const currentData = await parsePkgBuild(pkgbuildPath);
+    const currentData = await parsePkgBuild(pkgbuildPath, parser);
 
     if (updates.pkgver && currentData.pkgver !== updates.pkgver) {
         console.log(`[PKGBUILD] Updating pkgver from ${currentData.pkgver} to ${updates.pkgver} (pkgrel=1)`);

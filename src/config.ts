@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { parse } from 'yaml';
 import * as path from 'node:path';
+import type { PkgBuildParser } from './pkgbuild';
 
 export interface PreaurMaintainer {
     id: string;
@@ -15,6 +16,10 @@ export interface PreaurResources {
 
 export interface PreaurRepo {
     name: string;
+}
+
+export interface PreaurRuntimeConfig {
+    pkgbuildParser?: PkgBuildParser;
 }
 
 export interface PreaurChecker {
@@ -60,6 +65,7 @@ export interface PreaurPackage {
 
 export interface PreaurConfig {
     maintainers: PreaurMaintainer[];
+    config?: PreaurRuntimeConfig;
     resources?: PreaurResources;
     repo?: PreaurRepo;
     packages: PreaurPackage[];
@@ -76,6 +82,10 @@ export async function loadConfig(configPath: string): Promise<PreaurConfig> {
         }
         if (!config.packages || !Array.isArray(config.packages)) {
             throw new Error('Config missing or invalid packages array');
+        }
+
+        if (config.config?.pkgbuildParser && !['native', 'makepkg'].includes(config.config.pkgbuildParser)) {
+            throw new Error('Config config.pkgbuildParser must be either "native" or "makepkg"');
         }
 
         return config;

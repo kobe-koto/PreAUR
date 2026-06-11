@@ -1,4 +1,10 @@
 # Packager: PreAUR (on behalf of NAME) <EMAIL>
+config:
+  # PKGBUILD version parser backend:
+  # "native" -> fast built-in parser with bash expansion fallback (default)
+  # "makepkg" -> use `makepkg --printsrcinfo` for makepkg-compatible parsing
+  pkgbuildParser: "native"
+
 maintainers:
   - id: "johndoe"
     name: "John Doe"

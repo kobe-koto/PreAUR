@@ -32,6 +32,7 @@ program
 
             const configPath = path.resolve(process.cwd(), options.config);
             const config = await loadConfig(configPath);
+            const pkgbuildParser = config.config?.pkgbuildParser || 'native';
 
             const packagesToProcess = options.pkg
                 ? config.packages.filter(p => p.pkgname === options.pkg)
@@ -127,7 +128,7 @@ program
 
                         // Read PKGBUILD before any dynamic changes to ensure we have initial state if needed
                         const pkgbuildPath = path.resolve(pkgDir, 'PKGBUILD');
-                        const currentData = await parsePkgBuild(pkgbuildPath).catch(e => {
+                        const currentData = await parsePkgBuild(pkgbuildPath, pkgbuildParser).catch(e => {
                             console.warn(`[PKGBUILD] Failed to parse initial PKGBUILD for ${pkg.pkgname}: ${e.message}`);
                             return null;
                         });
@@ -145,8 +146,8 @@ program
                         let needsRelBump = false;
                         // In case of git packages, their checking is embedded in makepkg. If checker was specified, use that explicitly.
                         const builderType = pkg.builder || 'extra-x86_64-build';
-                        const pkgbuildModified = await updatePkgBuild(pkgbuildPath, templateUpdates, needsRelBump);
-                        const finalData = await parsePkgBuild(pkgbuildPath);
+                        const pkgbuildModified = await updatePkgBuild(pkgbuildPath, templateUpdates, needsRelBump, pkgbuildParser);
+                        const finalData = await parsePkgBuild(pkgbuildPath, pkgbuildParser);
 
                         let updateFound = pkgbuildModified;
                         if (!updateFound) {
