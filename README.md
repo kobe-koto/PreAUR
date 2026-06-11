@@ -27,7 +27,11 @@ paru -S preaur-bin
 
 Preaur relies on a configuration file to run. 
 
-Please see the [`preaur.config.yaml.example`](./preaur.config.yaml.example) file for a complete example configuration.
+Please see the [`preaur.config.yaml.example`](./preaur.config.yaml.example) file for a complete example configuration. You can also use the config schema by prepend this line:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kobe-koto/PreAUR/main/preaur.schema.json
+```
 
 Ensure you copy this file to `preaur.config.yaml` before running the CLI:
 

@@ -1,0 +1,287 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "definitions": {
+        "PreaurDebChecker": {
+            "additionalProperties": false,
+            "properties": {
+                "arch": {
+                    "type": "string"
+                },
+                "component": {
+                    "type": "string"
+                },
+                "dist": {
+                    "type": "string"
+                },
+                "normalize": {
+                    "type": "boolean"
+                },
+                "pkg": {
+                    "type": "string"
+                },
+                "strip_version": {
+                    "type": "boolean"
+                },
+                "template": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "deb",
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "component",
+                "dist",
+                "pkg",
+                "type",
+                "url"
+            ],
+            "type": "object"
+        },
+        "PreaurDummyPackage": {
+            "additionalProperties": false,
+            "properties": {
+                "dummy": {
+                    "type": "string"
+                },
+                "epoch": {
+                    "type": [
+                        "string",
+                        "number"
+                    ]
+                },
+                "files": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "pkgrel": {
+                    "type": [
+                        "string",
+                        "number"
+                    ]
+                },
+                "pkgver": {
+                    "type": [
+                        "string",
+                        "number"
+                    ]
+                }
+            },
+            "required": [
+                "dummy"
+            ],
+            "type": "object"
+        },
+        "PreaurGitHubChecker": {
+            "additionalProperties": false,
+            "properties": {
+                "normalize": {
+                    "type": "boolean"
+                },
+                "prefix": {
+                    "type": "string"
+                },
+                "repo": {
+                    "type": "string"
+                },
+                "strip_version": {
+                    "type": "boolean"
+                },
+                "suffix": {
+                    "type": "string"
+                },
+                "template": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "github",
+                    "type": "string"
+                },
+                "use": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "repo",
+                "type"
+            ],
+            "type": "object"
+        },
+        "PreaurMaintainer": {
+            "additionalProperties": false,
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "email",
+                "id",
+                "name"
+            ],
+            "type": "object"
+        },
+        "PreaurPackage": {
+            "additionalProperties": false,
+            "properties": {
+                "builder": {
+                    "type": "string"
+                },
+                "checker": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/PreaurGitHubChecker"
+                        },
+                        {
+                            "$ref": "#/definitions/PreaurDebChecker"
+                        },
+                        {
+                            "$ref": "#/definitions/PreaurRpmChecker"
+                        }
+                    ]
+                },
+                "dummy_packages": {
+                    "items": {
+                        "$ref": "#/definitions/PreaurDummyPackage"
+                    },
+                    "type": "array"
+                },
+                "git": {
+                    "type": "string"
+                },
+                "maintainer": {
+                    "type": "string"
+                },
+                "pkgname": {
+                    "type": "string"
+                },
+                "push": {
+                    "type": "boolean"
+                },
+                "repo_packages": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                }
+            },
+            "required": [
+                "maintainer",
+                "pkgname"
+            ],
+            "type": "object"
+        },
+        "PreaurRepo": {
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "name"
+            ],
+            "type": "object"
+        },
+        "PreaurResources": {
+            "additionalProperties": false,
+            "properties": {
+                "cpu": {
+                    "type": "string"
+                },
+                "parallel": {
+                    "type": [
+                        "string",
+                        "number"
+                    ]
+                }
+            },
+            "type": "object"
+        },
+        "PreaurRpmChecker": {
+            "additionalProperties": false,
+            "properties": {
+                "normalize": {
+                    "type": "boolean"
+                },
+                "pkg": {
+                    "type": "string"
+                },
+                "strip_version": {
+                    "type": "boolean"
+                },
+                "template": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "rpm",
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "pkg",
+                "type",
+                "url"
+            ],
+            "type": "object"
+        },
+        "PreaurRuntimeConfig": {
+            "additionalProperties": false,
+            "properties": {
+                "pkgbuildParser": {
+                    "enum": [
+                        "makepkg",
+                        "native"
+                    ],
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        }
+    },
+    "properties": {
+        "config": {
+            "$ref": "#/definitions/PreaurRuntimeConfig"
+        },
+        "maintainers": {
+            "items": {
+                "$ref": "#/definitions/PreaurMaintainer"
+            },
+            "type": "array"
+        },
+        "packages": {
+            "items": {
+                "$ref": "#/definitions/PreaurPackage"
+            },
+            "type": "array"
+        },
+        "repo": {
+            "$ref": "#/definitions/PreaurRepo"
+        },
+        "resources": {
+            "$ref": "#/definitions/PreaurResources"
+        }
+    },
+    "required": [
+        "maintainers",
+        "packages"
+    ],
+    "type": "object"
+}
+
