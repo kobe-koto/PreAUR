@@ -34,7 +34,7 @@ export async function preparePackageDiff(
         console.log(`[Git] Resetting and cleaning ${pkgname} before pulling...`);
         const repoGit = simpleGit(pkgDir);
         await repoGit.reset(['--hard']);
-        await repoGit.raw(['clean', '-Xdff']);
+        await repoGit.raw(['clean', '-dff']);
         console.log(`[Git] Pulling latest changes for ${pkgname}...`);
         await repoGit.pull();
         return { path: pkgDir, git: repoGit };
