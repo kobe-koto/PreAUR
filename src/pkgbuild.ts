@@ -11,23 +11,67 @@ export interface PkgBuildData {
     pkgrel: number;
 }
 
+function shellQuote(s: string): string {
+    return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * Source the PKGBUILD in a subshell so that variable references and bash
+ * parameter expansions (e.g. pkgver="${_update_pkgver//-/_}") are resolved to
+ * their concrete values, which a plain regex cannot do.
+ */
+async function evalPkgBuildVars(pkgbuildPath: string): Promise<{ epoch?: string; pkgver?: string; pkgrel?: string }> {
+    // The path is passed as $0 so it never has to be embedded in the script body.
+    const script = `export CARCH="$(uname -m)"; source "$0" >/dev/null 2>&1; printf '%s\\n%s\\n%s\\n' "\${epoch-}" "\${pkgver-}" "\${pkgrel-}"`;
+    const { stdout } = await execAsync(`bash -c ${shellQuote(script)} ${shellQuote(pkgbuildPath)}`);
+    const [epoch = '', pkgver = '', pkgrel = ''] = stdout.split('\n');
+    return {
+        epoch: epoch.trim() || undefined,
+        pkgver: pkgver.trim() || undefined,
+        pkgrel: pkgrel.trim() || undefined,
+    };
+}
+
 export async function parsePkgBuild(pkgbuildPath: string): Promise<PkgBuildData> {
     const content = await fs.readFile(pkgbuildPath, 'utf8');
 
-    const pkgverMatch = content.match(/^pkgver=(.+)$/m);
-    const pkgrelMatch = content.match(/^pkgrel=(\d+)$/m);
+    const stripQuotes = (s: string) => s.replace(/^['"]|['"]$/g, '').trim();
 
-    const epochMatch = content.match(/^epoch=(\d+)$/m);
+    // Loose capture (not \d+): pkgrel/epoch may be defined via bash variables,
+    // which we resolve below — a strict numeric regex would throw prematurely.
+    const pkgverMatch = content.match(/^pkgver=(.+)$/m);
+    const pkgrelMatch = content.match(/^pkgrel=(.+)$/m);
+    const epochMatch = content.match(/^epoch=(.+)$/m);
 
     if (!pkgverMatch || !pkgverMatch[1] || !pkgrelMatch || !pkgrelMatch[1]) {
         throw new Error('Could not parse pkgver or pkgrel from PKGBUILD');
     }
 
-    return {
-        epoch: epochMatch && epochMatch[1] ? epochMatch[1] : undefined,
-        pkgver: (pkgverMatch[1] as string).replace(/^['"]|['"]$/g, ''),
-        pkgrel: parseInt(pkgrelMatch[1] as string, 10),
-    };
+    let pkgver = stripQuotes(pkgverMatch[1]);
+    let pkgrelRaw = stripQuotes(pkgrelMatch[1]);
+    let epoch = epochMatch && epochMatch[1] ? stripQuotes(epochMatch[1]) : undefined;
+
+    // The regex captures the raw assignment text. If any version field relies on
+    // bash variables / parameter expansion (no pkgver() to let makepkg rewrite it),
+    // the literal expression leaks through — resolve it by sourcing the PKGBUILD.
+    if (pkgver.includes('$') || pkgrelRaw.includes('$') || (epoch?.includes('$'))) {
+        try {
+            const resolved = await evalPkgBuildVars(pkgbuildPath);
+            if (resolved.pkgver) pkgver = resolved.pkgver;
+            if (resolved.pkgrel) pkgrelRaw = resolved.pkgrel;
+            // epoch may legitimately resolve to empty (unset) — trust the shell.
+            epoch = resolved.epoch;
+        } catch (e: any) {
+            console.warn(`[PKGBUILD] Failed to resolve bash-expanded version fields via sourcing: ${e.message}`);
+        }
+    }
+
+    const pkgrel = parseInt(pkgrelRaw, 10);
+    if (isNaN(pkgrel)) {
+        throw new Error(`Could not parse pkgrel from PKGBUILD (got "${pkgrelRaw}")`);
+    }
+
+    return { epoch, pkgver, pkgrel };
 }
 
 export async function updateDynamicPkgver(pkgbuildPath: string): Promise<boolean> {
