@@ -1,7 +1,7 @@
 import axios from 'axios';
 import * as zlib from 'node:zlib';
 import { promisify } from 'node:util';
-import type { PreaurChecker } from './config';
+import type { PreaurChecker, PreaurDebChecker, PreaurGitHubChecker, PreaurRpmChecker } from './config';
 
 const gunzip = promisify(zlib.gunzip);
 
@@ -66,15 +66,15 @@ export interface CheckerResult {
     epoch?: string;
 }
 
-export interface CheckerProvider {
-    name: string;
-    check(config: PreaurChecker): Promise<CheckerResult>;
+export interface CheckerProvider<T extends PreaurChecker = PreaurChecker> {
+    name: T['type'];
+    check(config: T): Promise<CheckerResult>;
 }
 
-export class GitHubProvider implements CheckerProvider {
-    name = 'github';
+export class GitHubProvider implements CheckerProvider<PreaurGitHubChecker> {
+    name = 'github' as const;
 
-    async check(config: PreaurChecker): Promise<CheckerResult> {
+    async check(config: PreaurGitHubChecker): Promise<CheckerResult> {
         const { repo, use } = config;
         if (!repo) throw new Error('GitHub provider requires a "repo" configuration.');
 
@@ -132,10 +132,10 @@ export class GitHubProvider implements CheckerProvider {
     }
 }
 
-export class DebProvider implements CheckerProvider {
-    name = 'deb';
+export class DebProvider implements CheckerProvider<PreaurDebChecker> {
+    name = 'deb' as const;
 
-    async check(config: PreaurChecker): Promise<CheckerResult> {
+    async check(config: PreaurDebChecker): Promise<CheckerResult> {
         const { url, pkg, dist, component, arch = 'amd64' } = config;
         if (!url || !pkg || !dist || !component) {
             throw new Error('Deb provider requires "url", "pkg", "dist", and "component" configuration.');
@@ -207,10 +207,10 @@ export class DebProvider implements CheckerProvider {
     }
 }
 
-export class RpmProvider implements CheckerProvider {
-    name = 'rpm';
+export class RpmProvider implements CheckerProvider<PreaurRpmChecker> {
+    name = 'rpm' as const;
 
-    async check(config: PreaurChecker): Promise<CheckerResult> {
+    async check(config: PreaurRpmChecker): Promise<CheckerResult> {
         const { url, pkg } = config;
         if (!url || !pkg) {
             throw new Error('Rpm provider requires "url" and "pkg" configuration.');

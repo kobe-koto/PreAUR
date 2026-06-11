@@ -22,27 +22,36 @@ export interface PreaurRuntimeConfig {
     pkgbuildParser?: PkgBuildParser;
 }
 
-export interface PreaurChecker {
-    type: string;
-
-    // Generic
+export interface PreaurCheckerBase {
     strip_version?: boolean;
     normalize?: boolean;
     template?: string;
+}
 
-    // GitHub
-    repo?: string;
+export interface PreaurGitHubChecker extends PreaurCheckerBase {
+    type: 'github';
+    repo: string;
     use?: 'release' | 'prerelease' | string;
     prefix?: string;
     suffix?: string;
+}
 
-    // Deb / RPM providers
-    url?: string;
-    pkg?: string;
-    dist?: string;
-    component?: string;
+export interface PreaurDebChecker extends PreaurCheckerBase {
+    type: 'deb';
+    url: string;
+    pkg: string;
+    dist: string;
+    component: string;
     arch?: string;
 }
+
+export interface PreaurRpmChecker extends PreaurCheckerBase {
+    type: 'rpm';
+    url: string;
+    pkg: string;
+}
+
+export type PreaurChecker = PreaurGitHubChecker | PreaurDebChecker | PreaurRpmChecker;
 
 export interface PreaurDummyPackage {
     dummy: string;
