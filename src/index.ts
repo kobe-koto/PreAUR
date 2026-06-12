@@ -9,7 +9,7 @@ import { commitAndPush } from './git';
 import { buildPackage } from './builder';
 import { createDummyPackages } from './dummy';
 import { manageRepository, hasBuiltPackage, resolveBuiltPackage } from './repo';
-import { initMainLogger, createTaskLogger, loggerContext } from './logger';
+import { initMainLogger, createTaskLogger, getSessionLogDir, getTaskLogPath, loggerContext } from './logger';
 import { Semaphore } from './semaphore';
 import { ChrootPool } from './chroot_pool';
 import { VersionStore } from './version_store';
@@ -65,6 +65,7 @@ program
                     baseDir: process.cwd(),
                     pkgbuildParser,
                     repo: config.repo,
+                    sessionLogDir: getSessionLogDir(),
                 }
             );
 
@@ -91,7 +92,7 @@ program
             }
 
             const processPackage = async (plan: PackageBuildPlan): Promise<void> => {
-                const { pkg, pkgDir, git, builderType, finalData, pkgbuildModified } = plan;
+                const { pkg, pkgDir, git, builderType, finalData, pkgbuildModified, workDirs, env } = plan;
 
                 // Wait for dependencies first
                 if (pkg.repo_packages && pkg.repo_packages.length > 0) {
@@ -108,10 +109,11 @@ program
                 await pool.acquire();
 
                 const loggerStream = createTaskLogger(pkg.pkgname);
+                const taskLogPath = getTaskLogPath(pkg.pkgname);
 
                 await loggerContext.run(loggerStream, async () => {
                     console.log(`\n================================`);
-                    console.log(`[Preaur] Processing package: ${pkg.pkgname} (Logs streaming to ${pkg.pkgname}.log)`);
+                    console.log(`[Preaur] Processing package: ${pkg.pkgname} (Logs streaming to ${taskLogPath})`);
                     console.log(`================================`);
 
                     try {
@@ -164,6 +166,7 @@ program
                                     logStream: loggerStream,
                                     chrootWorker,
                                     packager,
+                                    env,
                                 });
                             } finally {
                                 if (chrootWorker) chrootPool.release(chrootWorker);
@@ -179,7 +182,7 @@ program
                             }
 
                             if (config.repo) {
-                                await manageRepository(config.repo, pkgDir, process.cwd());
+                                await manageRepository(config.repo, workDirs.pkgdest, process.cwd());
                             }
 
                             // Sync successful build variables

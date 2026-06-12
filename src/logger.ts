@@ -76,10 +76,23 @@ export function initMainLogger(baseDir: string = process.cwd()) {
     console.log(`[Logger] Session initialized at ${sessionLogDir}`);
 }
 
-export function createTaskLogger(pkgname: string): fs.WriteStream {
+export function getSessionLogDir(): string {
     if (!sessionLogDir) {
         throw new Error('Logger not initialized. Call initMainLogger() first.');
     }
-    const logFile = path.join(sessionLogDir, `${pkgname}.log`);
+    return sessionLogDir;
+}
+
+export function getTaskLogPath(pkgname: string): string {
+    const taskLogDir = path.join(getSessionLogDir(), pkgname);
+    return path.join(taskLogDir, 'main.log');
+}
+
+export function createTaskLogger(pkgname: string): fs.WriteStream {
+    const logFile = getTaskLogPath(pkgname);
+    const taskLogDir = path.dirname(logFile);
+    if (!fs.existsSync(taskLogDir)) {
+        fs.mkdirSync(taskLogDir, { recursive: true });
+    }
     return fs.createWriteStream(logFile, { flags: 'a' });
 }

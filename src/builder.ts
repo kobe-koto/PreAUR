@@ -31,6 +31,7 @@ export interface BuildOptions {
     logStream?: fs.WriteStream;
     chrootWorker?: string;
     packager?: string;
+    env?: Record<string, string>;
 }
 
 export async function buildPackage(opts: BuildOptions): Promise<void> {
@@ -42,6 +43,7 @@ export async function buildPackage(opts: BuildOptions): Promise<void> {
         logStream,
         chrootWorker,
         packager,
+        env: extraEnv,
     } = opts;
 
     const nproc = calculateNproc(resources?.cpu);
@@ -88,6 +90,7 @@ export async function buildPackage(opts: BuildOptions): Promise<void> {
 
         const env: Record<string, string> = {
             ...process.env as Record<string, string>,
+            ...extraEnv,
             MAKEFLAGS: `-j${nproc}`,
             COMPRESSZST: `zstd -c -T${nproc} -`,
         };

@@ -9,8 +9,10 @@ preaur.config.yaml
 /pkgbuilds
 /repo
 /data
+/work
 # - build output
 /dist
 # - logs
+/log
 /logs
 /tmp

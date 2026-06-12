@@ -31,12 +31,11 @@ export async function preparePackageDiff(
     const git = simpleGit();
 
     if (exists) {
-        console.log(`[Git] Resetting and cleaning ${pkgname} before pulling...`);
+        console.log(`[Git] Fetching, resetting, and cleaning ${pkgname}...`);
         const repoGit = simpleGit(pkgDir);
-        await repoGit.reset(['--hard']);
+        await repoGit.fetch();
+        await repoGit.reset(['--hard', '@{u}']);
         await repoGit.raw(['clean', '-dff']);
-        console.log(`[Git] Pulling latest changes for ${pkgname}...`);
-        await repoGit.pull();
         return { path: pkgDir, git: repoGit };
     } else {
         console.log(`[Git] Cloning ${pkgname} from ${gitUrl}...`);

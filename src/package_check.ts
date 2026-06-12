@@ -8,6 +8,7 @@ import { preparePackageDiff, type GitCloneResult } from './git';
 import { parsePkgBuild, updateDynamicPkgver, updatePkgBuild, type PkgBuildData, type PkgBuildParser } from './pkgbuild';
 import { VersionStore } from './version_store';
 import { hasBuiltPackage } from './repo';
+import { ensurePackageWorkDirs, getPackageWorkDirs, packageWorkEnv, type PackageWorkDirs } from './workdirs';
 
 export interface PackageBuildPlan {
     pkg: PreaurPackage;
@@ -16,6 +17,8 @@ export interface PackageBuildPlan {
     builderType: string;
     finalData: PkgBuildData;
     pkgbuildModified: boolean;
+    workDirs: PackageWorkDirs;
+    env: Record<string, string>;
 }
 
 export interface PackageVersionCheckResult {
@@ -76,6 +79,7 @@ export async function runPackageVersionCheck(
         baseDir?: string;
         pkgbuildParser?: PkgBuildParser;
         repo?: PreaurRepo;
+        sessionLogDir?: string;
         deps?: PackageVersionCheckDeps;
     } = {}
 ): Promise<PackageVersionCheckResult> {
@@ -83,6 +87,7 @@ export async function runPackageVersionCheck(
         baseDir = process.cwd(),
         pkgbuildParser = 'native',
         repo,
+        sessionLogDir,
         deps = {},
     } = options;
 
@@ -102,6 +107,14 @@ export async function runPackageVersionCheck(
         console.log(`[Check] Preparing version check for ${pkg.pkgname}...`);
 
         const pkgbuildsBase = path.resolve(baseDir, 'pkgbuilds');
+        const workDirs = getPackageWorkDirs(
+            baseDir,
+            pkg.pkgname,
+            sessionLogDir ? path.resolve(sessionLogDir, pkg.pkgname) : undefined
+        );
+        await ensurePackageWorkDirs(workDirs);
+        const env = packageWorkEnv(workDirs);
+
         const { path: pkgDir, git }: GitCloneResult = await prepare(
             pkg.pkgname,
             pkg.git,
@@ -122,10 +135,10 @@ export async function runPackageVersionCheck(
         }
 
         const pkgbuildPath = path.resolve(pkgDir, 'PKGBUILD');
-        await updateDynamic(pkgbuildPath);
+        await updateDynamic(pkgbuildPath, env);
 
         const builderType = pkg.builder || 'extra-x86_64-build';
-        const pkgbuildModified = await updatePkg(pkgbuildPath, templateUpdates, false, pkgbuildParser);
+        const pkgbuildModified = await updatePkg(pkgbuildPath, templateUpdates, false, pkgbuildParser, env);
         const finalData = await parse(pkgbuildPath, pkgbuildParser);
         const localData = versionStore.get(pkg.pkgname);
         const changed = pkgbuildModified || versionChanged(localData, finalData);
@@ -172,6 +185,8 @@ export async function runPackageVersionCheck(
             builderType,
             finalData,
             pkgbuildModified,
+            workDirs,
+            env,
         });
     }
 

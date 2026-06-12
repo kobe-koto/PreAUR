@@ -69,7 +69,7 @@ export async function manageRepository(
     // Ensure repo directory exists
     await fs.mkdir(repoDir, { recursive: true });
 
-    console.log(`[Repo] Synchronizing artifacts for to ${repoDir}...`);
+    console.log(`[Repo] Moving artifacts to ${repoDir}...`);
 
     // Find built `.pkg.tar.zst` files in the pkgbuildDirectory
     const files = await fs.readdir(pkgbuildDirectory);
@@ -80,16 +80,15 @@ export async function manageRepository(
         return;
     }
 
-    const copiedFiles: string[] = [];
+    const movedFiles: string[] = [];
 
     for (const file of pkgFiles) {
         const srcPath = path.resolve(pkgbuildDirectory, file);
         const destPath = path.resolve(repoDir, file);
 
-        // Copy file to repo directory
-        await fs.copyFile(srcPath, destPath);
-        console.log(`[Repo] Copied ${file} to repository.`);
-        copiedFiles.push(destPath);
+        await fs.rename(srcPath, destPath);
+        console.log(`[Repo] Moved ${file} to repository.`);
+        movedFiles.push(destPath);
     }
 
     // Run repo-add
@@ -99,7 +98,7 @@ export async function manageRepository(
 
     try {
         // repo-add usage: repo-add [options] <path-to-db> <package1> [<package2> ...]
-        const cmd = `repo-add ${dbFile} ${copiedFiles.join(' ')}`;
+        const cmd = `repo-add ${dbFile} ${movedFiles.join(' ')}`;
         await execAsync(cmd, { cwd: repoDir });
         console.log(`[Repo] Successfully updated pacman database: ${repoConfig.name}.db.tar.gz`);
     } catch (e: any) {
@@ -107,4 +106,3 @@ export async function manageRepository(
         throw e;
     }
 }
-

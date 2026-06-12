@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import * as path from 'node:path';
 
 const execAsync = promisify(exec);
+type CommandEnv = Record<string, string>;
 
 export interface PkgBuildData {
     epoch?: string;
@@ -106,7 +107,7 @@ export async function parsePkgBuild(pkgbuildPath: string, parser: PkgBuildParser
         : parsePkgBuildNative(pkgbuildPath);
 }
 
-export async function updateDynamicPkgver(pkgbuildPath: string): Promise<boolean> {
+export async function updateDynamicPkgver(pkgbuildPath: string, env?: CommandEnv): Promise<boolean> {
     const content = await fs.readFile(pkgbuildPath, 'utf8');
     if (!content.match(/^pkgver\(\)\s*\{/m)) {
         return false; // No pkgver() function
@@ -119,7 +120,10 @@ export async function updateDynamicPkgver(pkgbuildPath: string): Promise<boolean
         // -o: extract and download sources
         // -d: skip dependency checks
         // -c: clean up working directory after
-        await execAsync('makepkg -odc --noconfirm', { cwd: pkgbuildDir });
+        await execAsync('makepkg -odc --noconfirm', {
+            cwd: pkgbuildDir,
+            env: env ? { ...process.env, ...env } : process.env,
+        });
         return true;
     } catch (e: any) {
         console.error(`[PKGBUILD] Failed to run makepkg for dynamic pkgver: ${e.message}`);
@@ -131,7 +135,8 @@ export async function updatePkgBuild(
     pkgbuildPath: string,
     updates: Record<string, string>,
     forceBumpRel: boolean = false,
-    parser: PkgBuildParser = 'native'
+    parser: PkgBuildParser = 'native',
+    env?: CommandEnv
 ): Promise<boolean> {
     let content = await fs.readFile(pkgbuildPath, 'utf8');
     const originalContent = content;
@@ -181,7 +186,10 @@ export async function updatePkgBuild(
     try {
         const pkgbuildDir = path.dirname(pkgbuildPath);
         console.log(`[PKGBUILD] Running updpkgsums in ${pkgbuildDir}...`);
-        await execAsync('updpkgsums', { cwd: pkgbuildDir });
+        await execAsync('updpkgsums', {
+            cwd: pkgbuildDir,
+            env: env ? { ...process.env, ...env } : process.env,
+        });
     } catch (e: any) {
         console.error(`[PKGBUILD] Failed to run updpkgsums: ${e.message}`);
         throw e;

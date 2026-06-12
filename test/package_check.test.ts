@@ -142,4 +142,60 @@ describe('runPackageVersionCheck', () => {
         expect(result.buildPlans.map(plan => plan.finalData.pkgver)).toEqual(['2.0.0']);
         expect(store.get('demo')?.pkgver).toBe('1.0.0');
     });
+
+    test('passes package-scoped work directories to PKGBUILD commands', async () => {
+        const baseDir = await makeBaseDir();
+        const store = new VersionStore(baseDir);
+        await store.load();
+
+        let dynamicEnv: Record<string, string> | undefined;
+        let updateEnv: Record<string, string> | undefined;
+        const deps = makeDeps({ pkgver: '1.0.0', pkgrel: 1 });
+        deps.updateDynamicPkgver = async (pkgbuildPath, env) => {
+            dynamicEnv = env;
+            return false;
+        };
+        deps.updatePkgBuild = async (pkgbuildPath, updates, forceBumpRel, parser, env) => {
+            updateEnv = env;
+            return false;
+        };
+
+        const packages: PreaurPackage[] = [{ pkgname: 'demo', maintainer: 'preaur-owner' }];
+        const result = await runPackageVersionCheck(packages, store, {
+            baseDir,
+            deps,
+        });
+
+        expect(dynamicEnv).toEqual({
+            SRCDEST: path.join(baseDir, 'work', 'demo', 'srcdest'),
+            LOGDEST: path.join(baseDir, 'work', 'demo', 'logdest'),
+            BUILDDIR: path.join(baseDir, 'work', 'demo', 'builddir'),
+            PKGDEST: path.join(baseDir, 'work', 'demo', 'pkgdest'),
+        });
+        expect(updateEnv).toEqual(dynamicEnv);
+        expect(result.buildPlans[0]?.workDirs.pkgdest).toBe(path.join(baseDir, 'work', 'demo', 'pkgdest'));
+        expect(result.buildPlans[0]?.env).toEqual(dynamicEnv);
+    });
+
+    test('uses session package log directory for LOGDEST when provided', async () => {
+        const baseDir = await makeBaseDir();
+        const sessionLogDir = path.join(baseDir, 'logs', 'session');
+        const store = new VersionStore(baseDir);
+        await store.load();
+
+        let updateEnv: Record<string, string> | undefined;
+        const deps = makeDeps({ pkgver: '1.0.0', pkgrel: 1 });
+        deps.updatePkgBuild = async (pkgbuildPath, updates, forceBumpRel, parser, env) => {
+            updateEnv = env;
+            return false;
+        };
+
+        await runPackageVersionCheck([{ pkgname: 'demo', maintainer: 'preaur-owner' }], store, {
+            baseDir,
+            sessionLogDir,
+            deps,
+        });
+
+        expect(updateEnv?.LOGDEST).toBe(path.join(sessionLogDir, 'demo'));
+    });
 });
