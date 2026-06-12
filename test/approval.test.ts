@@ -49,8 +49,11 @@ describe('runApprovalCheck', () => {
 
         await expect(runApprovalCheck(packages, store, baseDir, fetcher)).rejects.toThrow(/Unapproved AUR ownership entries/);
 
-        expect(await readDataFile(baseDir, 'known_packages')).toBe('!!! spotify\n');
-        expect(await readDataFile(baseDir, 'known_maintainers')).toBe('!!! Antiz\n!!! gromit\n');
+        expect(await readDataFile(baseDir, 'known_packages')).toBe('!!! spotify # Maintainer: gromit, Antiz\n');
+        expect(await readDataFile(baseDir, 'known_maintainers')).toBe(
+            '!!! Antiz # Maintaining: spotify\n'
+            + '!!! gromit # Maintaining: spotify\n'
+        );
         expect(JSON.parse(await readDataFile(baseDir, 'versions.json')).spotify).toEqual({
             maintainer: 'gromit',
             co_maintainers: ['Antiz'],
@@ -78,6 +81,7 @@ describe('runApprovalCheck', () => {
         expect(result.buildablePackages).toEqual([]);
         expect(result.skippedPackages.map(item => item.pkg.pkgname)).toEqual(['dma']);
         expect(await readDataFile(baseDir, 'known_maintainers')).toBe('');
+        expect(await readDataFile(baseDir, 'known_packages')).toBe('dma # Maintainer: orphan\n');
     });
 
     test('allows approved orphan packages when allow_orphan_package_build is true', async () => {
@@ -106,6 +110,30 @@ describe('runApprovalCheck', () => {
         expect(result.skippedPackages).toEqual([]);
     });
 
+    test('ignores whole-line and inline comments in known list files', async () => {
+        const baseDir = await makeBaseDir();
+        await writeDataFile(baseDir, 'known_packages', '# approved packages\nspotify # Maintainer: old\n');
+        await writeDataFile(baseDir, 'known_maintainers', '# approved maintainers\ngromit # Maintaining: old\n');
+
+        const store = new VersionStore(baseDir);
+        await store.load();
+
+        const packages: PreaurPackage[] = [{ pkgname: 'spotify', maintainer: 'preaur-owner' }];
+        const fetcher: AurMetadataFetcher = async () => new Map([
+            ['spotify', {
+                name: 'spotify',
+                maintainer: 'gromit',
+                coMaintainers: [],
+            }],
+        ]);
+
+        const result = await runApprovalCheck(packages, store, baseDir, fetcher);
+
+        expect(result.buildablePackages.map(pkg => pkg.pkgname)).toEqual(['spotify']);
+        expect(await readDataFile(baseDir, 'known_packages')).toBe('spotify # Maintainer: gromit\n');
+        expect(await readDataFile(baseDir, 'known_maintainers')).toBe('gromit # Maintaining: spotify\n');
+    });
+
     test('marks a package unapproved when its AUR ownership changes', async () => {
         const baseDir = await makeBaseDir();
         await writeDataFile(baseDir, 'known_packages', 'spotify\n');
@@ -129,6 +157,6 @@ describe('runApprovalCheck', () => {
         ]);
 
         await expect(runApprovalCheck(packages, store, baseDir, fetcher)).rejects.toThrow(/packages: spotify/);
-        expect(await readDataFile(baseDir, 'known_packages')).toBe('!!! spotify\n');
+        expect(await readDataFile(baseDir, 'known_packages')).toBe('!!! spotify # Maintainer: new-maintainer\n');
     });
 });

@@ -38,6 +38,10 @@ export class VersionStore {
         return this.data[pkgname];
     }
 
+    entries(): Array<[string, VersionInfo]> {
+        return Object.entries(this.data);
+    }
+
     set(pkgname: string, info: VersionInfo) {
         this.data[pkgname] = {
             ...this.data[pkgname],

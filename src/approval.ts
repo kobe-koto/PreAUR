@@ -34,7 +34,7 @@ export class KnownListStore {
             const content = await fs.readFile(this.filePath, 'utf8');
 
             for (const rawLine of content.split(/\r?\n/)) {
-                const line = rawLine.trim();
+                const line = stripComment(rawLine);
                 if (!line) continue;
 
                 if (line.startsWith(UNAPPROVED_PREFIX)) {
@@ -49,13 +49,17 @@ export class KnownListStore {
         }
     }
 
-    async save(): Promise<void> {
+    async save(comments: Map<string, string> = new Map()): Promise<void> {
         const parent = path.dirname(this.filePath);
         await fs.mkdir(parent, { recursive: true });
 
         const lines = [...this.entries.entries()]
             .sort(([a], [b]) => a.localeCompare(b))
-            .map(([value, approved]) => approved ? value : `${UNAPPROVED_PREFIX} ${value}`);
+            .map(([value, approved]) => {
+                const entry = approved ? value : `${UNAPPROVED_PREFIX} ${value}`;
+                const comment = comments.get(value);
+                return comment ? `${entry} # ${comment}` : entry;
+            });
 
         await fs.writeFile(this.filePath, lines.length > 0 ? `${lines.join('\n')}\n` : '', 'utf8');
     }
@@ -73,6 +77,11 @@ export class KnownListStore {
     isApproved(value: string): boolean {
         return this.entries.get(value) === true;
     }
+}
+
+function stripComment(line: string): string {
+    const commentIndex = line.indexOf('#');
+    return (commentIndex === -1 ? line : line.slice(0, commentIndex)).trim();
 }
 
 export function normalizeCoMaintainers(value: unknown): string[] {
@@ -95,6 +104,62 @@ function sameMaintainerSnapshot(current: VersionInfo | undefined, next: AurPacka
     return current.maintainer === next.maintainer
         && currentCoMaintainers.length === next.coMaintainers.length
         && currentCoMaintainers.every((value, index) => value === next.coMaintainers[index]);
+}
+
+function metadataFromVersionInfo(pkgname: string, info: VersionInfo): AurPackageMetadata | null {
+    if (!('maintainer' in info) || !Array.isArray(info.co_maintainers)) {
+        return null;
+    }
+
+    return {
+        name: pkgname,
+        maintainer: info.maintainer ?? null,
+        coMaintainers: normalizeCoMaintainers(info.co_maintainers),
+    };
+}
+
+function packageComment(metadata: AurPackageMetadata): string {
+    const maintainers = [
+        metadata.maintainer ?? 'orphan',
+        ...metadata.coMaintainers,
+    ];
+
+    return `Maintainer: ${maintainers.join(', ')}`;
+}
+
+function buildKnownListComments(versionStore: VersionStore): {
+    packageComments: Map<string, string>;
+    maintainerComments: Map<string, string>;
+} {
+    const packageComments = new Map<string, string>();
+    const maintainerPackages = new Map<string, Set<string>>();
+
+    for (const [pkgname, info] of versionStore.entries()) {
+        const metadata = metadataFromVersionInfo(pkgname, info);
+        if (!metadata) continue;
+
+        packageComments.set(pkgname, packageComment(metadata));
+
+        const maintainers = [
+            ...(metadata.maintainer ? [metadata.maintainer] : []),
+            ...metadata.coMaintainers,
+        ];
+
+        for (const maintainer of maintainers) {
+            if (!maintainerPackages.has(maintainer)) {
+                maintainerPackages.set(maintainer, new Set());
+            }
+            maintainerPackages.get(maintainer)!.add(pkgname);
+        }
+    }
+
+    const maintainerComments = new Map<string, string>();
+    for (const [maintainer, packages] of maintainerPackages.entries()) {
+        const sortedPackages = [...packages].sort((a, b) => a.localeCompare(b));
+        maintainerComments.set(maintainer, `Maintaining: ${sortedPackages.join(', ')}`);
+    }
+
+    return { packageComments, maintainerComments };
 }
 
 export async function fetchAurPackageMetadata(pkgnames: string[]): Promise<Map<string, AurPackageMetadata>> {
@@ -197,9 +262,11 @@ export async function runApprovalCheck(
         }
     }
 
-    await knownPackages.save();
-    await knownMaintainers.save();
     await versionStore.save();
+
+    const { packageComments, maintainerComments } = buildKnownListComments(versionStore);
+    await knownPackages.save(packageComments);
+    await knownMaintainers.save(maintainerComments);
 
     if (unapprovedPackages.size > 0 || unapprovedMaintainers.size > 0) {
         const details = [
