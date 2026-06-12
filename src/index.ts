@@ -16,6 +16,7 @@ import { initMainLogger, createTaskLogger, loggerContext } from './logger';
 import { Semaphore } from './semaphore';
 import { ChrootPool } from './chroot_pool';
 import { VersionStore } from './version_store';
+import { runApprovalCheck } from './approval';
 
 const program = new Command();
 
@@ -46,6 +47,13 @@ program
             const versionStore = new VersionStore(process.cwd());
             await versionStore.load();
 
+            const { buildablePackages } = await runApprovalCheck(packagesToProcess, versionStore, process.cwd());
+
+            if (buildablePackages.length === 0) {
+                console.log('[Preaur] No packages are eligible for build after check phase.');
+                return;
+            }
+
             const rawParallel = config.resources?.parallel || 2;
             const parallelLimit = typeof rawParallel === 'string' ? parseInt(rawParallel, 10) : rawParallel;
             const effectiveParallel = isNaN(parallelLimit) ? 2 : parallelLimit;
@@ -56,7 +64,7 @@ program
             const pkgPromises = new Map<string, Promise<void>>();
 
             // Pre-register all promises so any package can safely await any other, regardless of array order.
-            for (const pkg of packagesToProcess) {
+            for (const pkg of buildablePackages) {
                 let resolver: () => void;
                 const p = new Promise<void>((res) => { resolver = res; });
                 pkgResolvers.set(pkg.pkgname, resolver!);
@@ -134,11 +142,11 @@ program
                         });
 
                         let localData = versionStore.get(pkg.pkgname);
-                        // If not in local store, sync PKGBUILD into local
-                        if (!localData && currentData) {
+                        // If version fields are not in local store, sync PKGBUILD into local.
+                        if ((!localData?.pkgver || localData.pkgrel === undefined) && currentData) {
                             versionStore.set(pkg.pkgname, currentData);
                             await versionStore.save();
-                            localData = currentData;
+                            localData = versionStore.get(pkg.pkgname);
                         }
 
                         await updateDynamicPkgver(pkgbuildPath);
@@ -151,7 +159,7 @@ program
 
                         let updateFound = pkgbuildModified;
                         if (!updateFound) {
-                            if (localData) {
+                            if (localData?.pkgver && localData.pkgrel !== undefined) {
                                 if (finalData.epoch !== localData.epoch || finalData.pkgver !== localData.pkgver || finalData.pkgrel !== localData.pkgrel) {
                                     updateFound = true;
                                     console.log(`[Preaur] Update detected: local(${localData.epoch ? localData.epoch + ':' : ''}${localData.pkgver}-${localData.pkgrel}) -> new(${finalData.epoch ? finalData.epoch + ':' : ''}${finalData.pkgver}-${finalData.pkgrel})`);
@@ -251,7 +259,7 @@ program
             };
 
             // Kick off processing (they will wait on dependencies internally)
-            for (const pkg of packagesToProcess) {
+            for (const pkg of buildablePackages) {
                 processPackage(pkg); // Don't await here, we let them orchestrate themselves
             }
 

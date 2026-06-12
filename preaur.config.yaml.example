@@ -27,6 +27,10 @@ repo:
   name: "myrepo" 
 
 packages:
+  # If an AUR package is orphaned, PreAUR skips its build unless this is set
+  # on that package:
+  # allow_orphan_package_build: true
+
   # Standard Github release mapped package
   - pkgname: "grub-theme-lain"
     maintainer: "johndoe"
@@ -95,4 +99,3 @@ packages:
       component: non-free
       arch: amd64
       pkg: spotify-client
-

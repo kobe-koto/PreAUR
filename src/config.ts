@@ -64,6 +64,7 @@ export interface PreaurDummyPackage {
 export interface PreaurPackage {
     pkgname: string;
     maintainer: string;
+    allow_orphan_package_build?: boolean;
     git?: string;
     checker?: PreaurChecker;
     builder?: string; // 'pkgctl build', 'extra-x86_64-build', etc.

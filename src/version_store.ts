@@ -3,8 +3,10 @@ import * as path from 'node:path';
 
 export interface VersionInfo {
     epoch?: string;
-    pkgver: string;
-    pkgrel: number;
+    pkgver?: string;
+    pkgrel?: number;
+    maintainer?: string | null;
+    co_maintainers?: string[];
 }
 
 export class VersionStore {
@@ -37,6 +39,9 @@ export class VersionStore {
     }
 
     set(pkgname: string, info: VersionInfo) {
-        this.data[pkgname] = info;
+        this.data[pkgname] = {
+            ...this.data[pkgname],
+            ...info,
+        };
     }
 }

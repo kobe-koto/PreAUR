@@ -137,6 +137,9 @@
         "PreaurPackage": {
             "additionalProperties": false,
             "properties": {
+                "allow_orphan_package_build": {
+                    "type": "boolean"
+                },
                 "builder": {
                     "type": "string"
                 },
