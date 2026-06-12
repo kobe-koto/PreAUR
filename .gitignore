@@ -13,3 +13,4 @@ preaur.config.yaml
 /dist
 # - logs
 /logs
+/tmp
