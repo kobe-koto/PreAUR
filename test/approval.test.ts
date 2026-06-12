@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { runApprovalCheck, type AurMetadataFetcher } from '../src/approval';
+import { resolvePackageSource, runApprovalCheck, type AurMetadataFetcher } from '../src/approval';
 import type { PreaurPackage } from '../src/config';
 import { VersionStore } from '../src/version_store';
 
@@ -55,6 +55,8 @@ describe('runApprovalCheck', () => {
             + '!!! gromit # Maintaining: spotify\n'
         );
         expect(JSON.parse(await readDataFile(baseDir, 'versions.json')).spotify).toEqual({
+            source: 'aur',
+            aur_pkgname: 'spotify',
             maintainer: 'gromit',
             co_maintainers: ['Antiz'],
         });
@@ -108,6 +110,89 @@ describe('runApprovalCheck', () => {
 
         expect(result.buildablePackages.map(pkg => pkg.pkgname)).toEqual(['dma']);
         expect(result.skippedPackages).toEqual([]);
+    });
+
+    test('treats non-AUR git packages as package-only approval entries', async () => {
+        const baseDir = await makeBaseDir();
+        const store = new VersionStore(baseDir);
+        await store.load();
+
+        const packages: PreaurPackage[] = [{
+            pkgname: 'internal-tool',
+            maintainer: 'preaur-owner',
+            git: 'https://git.example.org/packages/internal-tool.git',
+        }];
+        const fetcher: AurMetadataFetcher = async () => {
+            throw new Error('custom git package should not request AUR metadata');
+        };
+
+        await expect(runApprovalCheck(packages, store, baseDir, fetcher)).rejects.toThrow(/packages: internal-tool/);
+
+        expect(await readDataFile(baseDir, 'known_packages')).toBe('!!! internal-tool # Source: custom git\n');
+        expect(await readDataFile(baseDir, 'known_maintainers')).toBe('');
+        expect(JSON.parse(await readDataFile(baseDir, 'versions.json'))['internal-tool']).toEqual({
+            source: 'custom_git',
+        });
+    });
+
+    test('uses trusted AUR git prefixes to derive the AUR package name', async () => {
+        const baseDir = await makeBaseDir();
+        await writeDataFile(baseDir, 'known_packages', 'local-spotify\n');
+        await writeDataFile(baseDir, 'known_maintainers', 'gromit\n');
+
+        const store = new VersionStore(baseDir);
+        await store.load();
+
+        let requestedPackages: string[] = [];
+        const packages: PreaurPackage[] = [{
+            pkgname: 'local-spotify',
+            maintainer: 'preaur-owner',
+            git: 'https://aur.archlinux.org/spotify.git',
+        }];
+        const fetcher: AurMetadataFetcher = async (pkgnames) => {
+            requestedPackages = pkgnames;
+            return new Map([
+                ['spotify', {
+                    name: 'spotify',
+                    maintainer: 'gromit',
+                    coMaintainers: [],
+                }],
+            ]);
+        };
+
+        const result = await runApprovalCheck(packages, store, baseDir, fetcher);
+
+        expect(requestedPackages).toEqual(['spotify']);
+        expect(result.buildablePackages.map(pkg => pkg.pkgname)).toEqual(['local-spotify']);
+        expect(await readDataFile(baseDir, 'known_packages')).toBe('local-spotify # AUR: spotify; Maintainer: gromit\n');
+        expect(await readDataFile(baseDir, 'known_maintainers')).toBe('gromit # Maintaining: local-spotify\n');
+    });
+
+    test('uses configured trusted AUR mirror prefixes', async () => {
+        const pkg: PreaurPackage = {
+            pkgname: 'local-spotify',
+            maintainer: 'preaur-owner',
+            git: 'https://aur-mirror.example.org/packages/spotify.git',
+        };
+
+        expect(resolvePackageSource(pkg, ['https://aur-mirror.example.org/'])).toEqual({
+            type: 'aur',
+            aurPkgname: 'spotify',
+        });
+    });
+
+    test('uses explicit aur_pkgname even for non-trusted git URLs', async () => {
+        const pkg: PreaurPackage = {
+            pkgname: 'local-spotify',
+            maintainer: 'preaur-owner',
+            git: 'https://git.example.org/mirror/some-layout.git',
+            aur_pkgname: 'spotify',
+        };
+
+        expect(resolvePackageSource(pkg)).toEqual({
+            type: 'aur',
+            aurPkgname: 'spotify',
+        });
     });
 
     test('ignores whole-line and inline comments in known list files', async () => {

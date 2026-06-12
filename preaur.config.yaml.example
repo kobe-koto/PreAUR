@@ -6,6 +6,12 @@ config:
   # "native" -> fast built-in parser with bash expansion fallback (default)
   # "makepkg" -> use `makepkg --printsrcinfo` for makepkg-compatible parsing
   pkgbuildParser: "native"
+  # Extra git URL prefixes that should still be treated as trusted AUR mirrors
+  # for ownership checks. Built-ins:
+  # - ssh://aur@aur.archlinux.org/
+  # - https://aur.archlinux.org/
+  # trustedAurGitPrefixes:
+  #   - "https://aur-mirror.example.org/"
 
 maintainers:
   - id: "johndoe"
@@ -30,6 +36,10 @@ packages:
   # If an AUR package is orphaned, PreAUR skips its build unless this is set
   # on that package:
   # allow_orphan_package_build: true
+  #
+  # If `git` points at a trusted AUR prefix, PreAUR derives the AUR name from
+  # the URL. Use aur_pkgname when the AUR name needs to be explicit:
+  # aur_pkgname: "upstream-aur-name"
 
   # Standard Github release mapped package
   - pkgname: "grub-theme-lain"

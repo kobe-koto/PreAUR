@@ -140,6 +140,9 @@
                 "allow_orphan_package_build": {
                     "type": "boolean"
                 },
+                "aur_pkgname": {
+                    "type": "string"
+                },
                 "builder": {
                     "type": "string"
                 },
@@ -253,6 +256,12 @@
                         "native"
                     ],
                     "type": "string"
+                },
+                "trustedAurGitPrefixes": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
                 }
             },
             "type": "object"

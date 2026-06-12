@@ -20,6 +20,7 @@ export interface PreaurRepo {
 
 export interface PreaurRuntimeConfig {
     pkgbuildParser?: PkgBuildParser;
+    trustedAurGitPrefixes?: string[];
 }
 
 export interface PreaurCheckerBase {
@@ -65,6 +66,7 @@ export interface PreaurPackage {
     pkgname: string;
     maintainer: string;
     allow_orphan_package_build?: boolean;
+    aur_pkgname?: string;
     git?: string;
     checker?: PreaurChecker;
     builder?: string; // 'pkgctl build', 'extra-x86_64-build', etc.
@@ -96,6 +98,9 @@ export async function loadConfig(configPath: string): Promise<PreaurConfig> {
 
         if (config.config?.pkgbuildParser && !['native', 'makepkg'].includes(config.config.pkgbuildParser)) {
             throw new Error('Config config.pkgbuildParser must be either "native" or "makepkg"');
+        }
+        if (config.config?.trustedAurGitPrefixes && !Array.isArray(config.config.trustedAurGitPrefixes)) {
+            throw new Error('Config config.trustedAurGitPrefixes must be an array');
         }
 
         return config;

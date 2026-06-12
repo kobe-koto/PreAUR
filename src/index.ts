@@ -47,7 +47,13 @@ program
             const versionStore = new VersionStore(process.cwd());
             await versionStore.load();
 
-            const { buildablePackages } = await runApprovalCheck(packagesToProcess, versionStore, process.cwd());
+            const { buildablePackages } = await runApprovalCheck(
+                packagesToProcess,
+                versionStore,
+                process.cwd(),
+                undefined,
+                config.config?.trustedAurGitPrefixes
+            );
 
             if (buildablePackages.length === 0) {
                 console.log('[Preaur] No packages are eligible for build after check phase.');

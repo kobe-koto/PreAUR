@@ -5,6 +5,8 @@ export interface VersionInfo {
     epoch?: string;
     pkgver?: string;
     pkgrel?: number;
+    source?: 'aur' | 'custom_git';
+    aur_pkgname?: string;
     maintainer?: string | null;
     co_maintainers?: string[];
 }

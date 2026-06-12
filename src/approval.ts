@@ -6,6 +6,10 @@ import type { PreaurPackage } from './config';
 import { VersionStore, type VersionInfo } from './version_store';
 
 const UNAPPROVED_PREFIX = '!!!';
+const BUILTIN_TRUSTED_AUR_GIT_PREFIXES = [
+    'ssh://aur@aur.archlinux.org/',
+    'https://aur.archlinux.org/',
+];
 
 export interface AurPackageMetadata {
     name: string;
@@ -19,6 +23,11 @@ export interface ApprovalCheckResult {
 }
 
 export type AurMetadataFetcher = (pkgnames: string[]) => Promise<Map<string, AurPackageMetadata>>;
+
+interface PackageSource {
+    type: 'aur' | 'custom_git';
+    aurPkgname?: string;
+}
 
 export class KnownListStore {
     private entries = new Map<string, boolean>();
@@ -96,14 +105,30 @@ export function normalizeCoMaintainers(value: unknown): string[] {
 }
 
 function sameMaintainerSnapshot(current: VersionInfo | undefined, next: AurPackageMetadata): boolean {
+    if (current?.source === 'custom_git') {
+        return false;
+    }
+
     if (!current || !('maintainer' in current) || !Array.isArray(current.co_maintainers)) {
         return true;
     }
 
     const currentCoMaintainers = normalizeCoMaintainers(current.co_maintainers);
-    return current.maintainer === next.maintainer
+    const currentAurPkgname = current.aur_pkgname ?? next.name;
+
+    return currentAurPkgname === next.name
+        && current.maintainer === next.maintainer
         && currentCoMaintainers.length === next.coMaintainers.length
         && currentCoMaintainers.every((value, index) => value === next.coMaintainers[index]);
+}
+
+function sameCustomGitSnapshot(current: VersionInfo | undefined): boolean {
+    if (!current) return true;
+    if (current.source === 'custom_git') return true;
+
+    return current.source === undefined
+        && !('maintainer' in current)
+        && !Array.isArray(current.co_maintainers);
 }
 
 function metadataFromVersionInfo(pkgname: string, info: VersionInfo): AurPackageMetadata | null {
@@ -112,19 +137,23 @@ function metadataFromVersionInfo(pkgname: string, info: VersionInfo): AurPackage
     }
 
     return {
-        name: pkgname,
+        name: info.aur_pkgname ?? pkgname,
         maintainer: info.maintainer ?? null,
         coMaintainers: normalizeCoMaintainers(info.co_maintainers),
     };
 }
 
-function packageComment(metadata: AurPackageMetadata): string {
+function packageComment(pkgname: string, info: VersionInfo, metadata: AurPackageMetadata): string {
     const maintainers = [
         metadata.maintainer ?? 'orphan',
         ...metadata.coMaintainers,
     ];
 
-    return `Maintainer: ${maintainers.join(', ')}`;
+    const aurPrefix = info.aur_pkgname && info.aur_pkgname !== pkgname
+        ? `AUR: ${info.aur_pkgname}; `
+        : '';
+
+    return `${aurPrefix}Maintainer: ${maintainers.join(', ')}`;
 }
 
 function buildKnownListComments(versionStore: VersionStore): {
@@ -135,10 +164,15 @@ function buildKnownListComments(versionStore: VersionStore): {
     const maintainerPackages = new Map<string, Set<string>>();
 
     for (const [pkgname, info] of versionStore.entries()) {
+        if (info.source === 'custom_git') {
+            packageComments.set(pkgname, 'Source: custom git');
+            continue;
+        }
+
         const metadata = metadataFromVersionInfo(pkgname, info);
         if (!metadata) continue;
 
-        packageComments.set(pkgname, packageComment(metadata));
+        packageComments.set(pkgname, packageComment(pkgname, info, metadata));
 
         const maintainers = [
             ...(metadata.maintainer ? [metadata.maintainer] : []),
@@ -160,6 +194,57 @@ function buildKnownListComments(versionStore: VersionStore): {
     }
 
     return { packageComments, maintainerComments };
+}
+
+export function resolvePackageSource(
+    pkg: PreaurPackage,
+    trustedAurGitPrefixes: string[] = []
+): PackageSource {
+    if (pkg.aur_pkgname) {
+        return { type: 'aur', aurPkgname: pkg.aur_pkgname };
+    }
+
+    if (!pkg.git) {
+        return { type: 'aur', aurPkgname: pkg.pkgname };
+    }
+
+    const prefixes = [
+        ...BUILTIN_TRUSTED_AUR_GIT_PREFIXES,
+        ...trustedAurGitPrefixes,
+    ].filter(Boolean);
+
+    for (const prefix of prefixes) {
+        if (!pkg.git.startsWith(prefix)) continue;
+
+        const aurPkgname = deriveAurPkgnameFromGit(pkg.git, prefix);
+        if (!aurPkgname) {
+            throw new Error(`Could not derive AUR package name from trusted git URL for ${pkg.pkgname}: ${pkg.git}`);
+        }
+
+        return { type: 'aur', aurPkgname };
+    }
+
+    return { type: 'custom_git' };
+}
+
+function deriveAurPkgnameFromGit(gitUrl: string, prefix: string): string | null {
+    const remainder = gitUrl
+        .slice(prefix.length)
+        .split(/[?#]/)[0]
+        ?.replace(/\/+$/, '');
+
+    const lastSegment = remainder
+        ?.split('/')
+        .filter(Boolean)
+        .at(-1);
+
+    if (!lastSegment) return null;
+
+    const withoutGitSuffix = lastSegment.endsWith('.git')
+        ? lastSegment.slice(0, -'.git'.length)
+        : lastSegment;
+
+    return withoutGitSuffix ? decodeURIComponent(withoutGitSuffix) : null;
 }
 
 export async function fetchAurPackageMetadata(pkgnames: string[]): Promise<Map<string, AurPackageMetadata>> {
@@ -197,7 +282,8 @@ export async function runApprovalCheck(
     packages: PreaurPackage[],
     versionStore: VersionStore,
     baseDir: string = process.cwd(),
-    fetcher: AurMetadataFetcher = fetchAurPackageMetadata
+    fetcher: AurMetadataFetcher = fetchAurPackageMetadata,
+    trustedAurGitPrefixes: string[] = []
 ): Promise<ApprovalCheckResult> {
     console.log(`[Check] Checking AUR ownership metadata for ${packages.length} package(s)...`);
 
@@ -208,57 +294,100 @@ export async function runApprovalCheck(
     await knownPackages.load();
     await knownMaintainers.load();
 
-    const metadataByPackage = await fetcher(packages.map(pkg => pkg.pkgname));
+    const sourcesByPackage = new Map<string, PackageSource>();
+    const aurPkgnames = new Set<string>();
+
+    for (const pkg of packages) {
+        const source = resolvePackageSource(pkg, trustedAurGitPrefixes);
+        sourcesByPackage.set(pkg.pkgname, source);
+
+        if (source.type === 'aur' && source.aurPkgname) {
+            aurPkgnames.add(source.aurPkgname);
+        }
+    }
+
+    const aurPkgnameList = [...aurPkgnames];
+    const metadataByPackage = aurPkgnameList.length > 0
+        ? await fetcher(aurPkgnameList)
+        : new Map<string, AurPackageMetadata>();
     const unapprovedPackages = new Set<string>();
     const unapprovedMaintainers = new Set<string>();
     const buildablePackages: PreaurPackage[] = [];
     const skippedPackages: ApprovalCheckResult['skippedPackages'] = [];
 
     for (const pkg of packages) {
-        const metadata = metadataByPackage.get(pkg.pkgname);
-        if (!metadata) {
-            throw new Error(`AUR metadata not found for package: ${pkg.pkgname}`);
-        }
-
         knownPackages.ensure(pkg.pkgname);
+        const source = sourcesByPackage.get(pkg.pkgname);
 
-        const previous = versionStore.get(pkg.pkgname);
-        if (!sameMaintainerSnapshot(previous, metadata)) {
-            console.warn(`[Check] AUR maintainer ownership changed for ${pkg.pkgname}; marking package unapproved.`);
-            knownPackages.markUnapproved(pkg.pkgname);
+        if (!source) {
+            throw new Error(`Could not resolve package source for ${pkg.pkgname}`);
         }
 
-        const maintainers = [
-            ...(metadata.maintainer ? [metadata.maintainer] : []),
-            ...metadata.coMaintainers,
-        ];
-
-        for (const maintainer of maintainers) {
-            knownMaintainers.ensure(maintainer);
-        }
-
-        versionStore.set(pkg.pkgname, {
-            maintainer: metadata.maintainer,
-            co_maintainers: metadata.coMaintainers,
-        });
-
-        if (!knownPackages.isApproved(pkg.pkgname)) {
-            unapprovedPackages.add(pkg.pkgname);
-        }
-
-        for (const maintainer of maintainers) {
-            if (!knownMaintainers.isApproved(maintainer)) {
-                unapprovedMaintainers.add(maintainer);
+        if (source.type === 'custom_git') {
+            const previous = versionStore.get(pkg.pkgname);
+            if (!sameCustomGitSnapshot(previous)) {
+                console.warn(`[Check] Package source changed to custom git for ${pkg.pkgname}; marking package unapproved.`);
+                knownPackages.markUnapproved(pkg.pkgname);
             }
-        }
 
-        if (metadata.maintainer === null && pkg.allow_orphan_package_build !== true) {
-            skippedPackages.push({
-                pkg,
-                reason: 'AUR package is orphan and allow_orphan_package_build is not true',
+            versionStore.set(pkg.pkgname, {
+                source: 'custom_git',
+                aur_pkgname: undefined,
+                maintainer: undefined,
+                co_maintainers: undefined,
             });
-        } else {
+
+            if (!knownPackages.isApproved(pkg.pkgname)) {
+                unapprovedPackages.add(pkg.pkgname);
+            }
+
             buildablePackages.push(pkg);
+        } else {
+            const metadata = metadataByPackage.get(source.aurPkgname!);
+            if (!metadata) {
+                throw new Error(`AUR metadata not found for package: ${source.aurPkgname}`);
+            }
+
+            const previous = versionStore.get(pkg.pkgname);
+            if (!sameMaintainerSnapshot(previous, metadata)) {
+                console.warn(`[Check] AUR maintainer ownership changed for ${pkg.pkgname}; marking package unapproved.`);
+                knownPackages.markUnapproved(pkg.pkgname);
+            }
+
+            const maintainers = [
+                ...(metadata.maintainer ? [metadata.maintainer] : []),
+                ...metadata.coMaintainers,
+            ];
+
+            for (const maintainer of maintainers) {
+                knownMaintainers.ensure(maintainer);
+            }
+
+            versionStore.set(pkg.pkgname, {
+                source: 'aur',
+                aur_pkgname: source.aurPkgname,
+                maintainer: metadata.maintainer,
+                co_maintainers: metadata.coMaintainers,
+            });
+
+            if (!knownPackages.isApproved(pkg.pkgname)) {
+                unapprovedPackages.add(pkg.pkgname);
+            }
+
+            for (const maintainer of maintainers) {
+                if (!knownMaintainers.isApproved(maintainer)) {
+                    unapprovedMaintainers.add(maintainer);
+                }
+            }
+
+            if (metadata.maintainer === null && pkg.allow_orphan_package_build !== true) {
+                skippedPackages.push({
+                    pkg,
+                    reason: 'AUR package is orphan and allow_orphan_package_build is not true',
+                });
+            } else {
+                buildablePackages.push(pkg);
+            }
         }
     }
 
