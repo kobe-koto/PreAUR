@@ -5,10 +5,7 @@ import { Command } from 'commander';
 import * as path from 'node:path';
 
 import { loadConfig } from './config';
-import type { PreaurPackage, PreaurConfig } from './config';
-import { fetchLatestVersion, applyVersionTemplate } from './checker';
-import { preparePackageDiff, commitAndPush } from './git';
-import { updatePkgBuild, parsePkgBuild, updateDynamicPkgver } from './pkgbuild';
+import { commitAndPush } from './git';
 import { buildPackage } from './builder';
 import { createDummyPackages } from './dummy';
 import { manageRepository, hasBuiltPackage, resolveBuiltPackage } from './repo';
@@ -17,6 +14,7 @@ import { Semaphore } from './semaphore';
 import { ChrootPool } from './chroot_pool';
 import { VersionStore } from './version_store';
 import { runApprovalCheck } from './approval';
+import { runPackageVersionCheck, type PackageBuildPlan } from './package_check';
 
 const program = new Command();
 
@@ -47,7 +45,7 @@ program
             const versionStore = new VersionStore(process.cwd());
             await versionStore.load();
 
-            const { buildablePackages } = await runApprovalCheck(
+            const { buildablePackages: approvedPackages } = await runApprovalCheck(
                 packagesToProcess,
                 versionStore,
                 process.cwd(),
@@ -55,8 +53,23 @@ program
                 config.config?.trustedAurGitPrefixes
             );
 
-            if (buildablePackages.length === 0) {
+            if (approvedPackages.length === 0) {
                 console.log('[Preaur] No packages are eligible for build after check phase.');
+                return;
+            }
+
+            const { buildPlans } = await runPackageVersionCheck(
+                approvedPackages,
+                versionStore,
+                {
+                    baseDir: process.cwd(),
+                    pkgbuildParser,
+                    repo: config.repo,
+                }
+            );
+
+            if (buildPlans.length === 0) {
+                console.log('[Preaur] No packages have version updates after check phase.');
                 return;
             }
 
@@ -70,14 +83,16 @@ program
             const pkgPromises = new Map<string, Promise<void>>();
 
             // Pre-register all promises so any package can safely await any other, regardless of array order.
-            for (const pkg of buildablePackages) {
+            for (const plan of buildPlans) {
                 let resolver: () => void;
                 const p = new Promise<void>((res) => { resolver = res; });
-                pkgResolvers.set(pkg.pkgname, resolver!);
-                pkgPromises.set(pkg.pkgname, p);
+                pkgResolvers.set(plan.pkg.pkgname, resolver!);
+                pkgPromises.set(plan.pkg.pkgname, p);
             }
 
-            const processPackage = async (pkg: PreaurPackage): Promise<void> => {
+            const processPackage = async (plan: PackageBuildPlan): Promise<void> => {
+                const { pkg, pkgDir, git, builderType, finalData, pkgbuildModified } = plan;
+
                 // Wait for dependencies first
                 if (pkg.repo_packages && pkg.repo_packages.length > 0) {
                     const deps = pkg.repo_packages
@@ -100,90 +115,12 @@ program
                     console.log(`================================`);
 
                     try {
-                        const pkgbuildsBase = path.resolve(process.cwd(), 'pkgbuilds');
-                        const { path: pkgDir, git } = await preparePackageDiff(
-                            pkg.pkgname,
-                            pkg.git,
-                            !!pkg.push,
-                            pkgbuildsBase
-                        );
-
-                        let newVersion: string | null = null;
-                        let newEpoch: string | undefined = undefined;
-                        let templateUpdates: Record<string, string> = {};
-
-                        if (pkg.checker) {
-                            console.log(`[Checker] Checking version using ${pkg.checker.type} provider for ${pkg.pkgname}...`);
-                            const checkerRes = await fetchLatestVersion(pkg.checker);
-                            if (checkerRes) {
-                                newVersion = checkerRes.version;
-                                newEpoch = checkerRes.epoch;
-                                console.log(`[Checker] Latest version for ${pkg.pkgname} is v${newVersion}${newEpoch ? ` (epoch: ${newEpoch})` : ''}`);
-
-                                if (pkg.checker.template) {
-                                    const tplResult = applyVersionTemplate(pkg.checker.template, newVersion);
-                                    if (tplResult) {
-                                        templateUpdates = tplResult;
-                                        console.log(`[Checker] Template override applied: ${JSON.stringify(templateUpdates)}`);
-                                    } else {
-                                        console.warn(`[Checker] Template parsing failed for ${newVersion}`);
-                                        templateUpdates = { pkgver: newVersion };
-                                    }
-                                } else {
-                                    templateUpdates = { pkgver: newVersion };
-                                }
-                                if (newEpoch) {
-                                    templateUpdates.epoch = newEpoch;
-                                }
-                            } else {
-                                console.log(`[Checker] Could not ascertain latest version for ${pkg.pkgname}.`);
-                            }
-                        }
-
-                        // Read PKGBUILD before any dynamic changes to ensure we have initial state if needed
-                        const pkgbuildPath = path.resolve(pkgDir, 'PKGBUILD');
-                        const currentData = await parsePkgBuild(pkgbuildPath, pkgbuildParser).catch(e => {
-                            console.warn(`[PKGBUILD] Failed to parse initial PKGBUILD for ${pkg.pkgname}: ${e.message}`);
-                            return null;
-                        });
-
-                        let localData = versionStore.get(pkg.pkgname);
-                        // If version fields are not in local store, sync PKGBUILD into local.
-                        if ((!localData?.pkgver || localData.pkgrel === undefined) && currentData) {
-                            versionStore.set(pkg.pkgname, currentData);
-                            await versionStore.save();
-                            localData = versionStore.get(pkg.pkgname);
-                        }
-
-                        await updateDynamicPkgver(pkgbuildPath);
-
-                        let needsRelBump = false;
-                        // In case of git packages, their checking is embedded in makepkg. If checker was specified, use that explicitly.
-                        const builderType = pkg.builder || 'extra-x86_64-build';
-                        const pkgbuildModified = await updatePkgBuild(pkgbuildPath, templateUpdates, needsRelBump, pkgbuildParser);
-                        const finalData = await parsePkgBuild(pkgbuildPath, pkgbuildParser);
-
-                        let updateFound = pkgbuildModified;
-                        if (!updateFound) {
-                            if (localData?.pkgver && localData.pkgrel !== undefined) {
-                                if (finalData.epoch !== localData.epoch || finalData.pkgver !== localData.pkgver || finalData.pkgrel !== localData.pkgrel) {
-                                    updateFound = true;
-                                    console.log(`[Preaur] Update detected: local(${localData.epoch ? localData.epoch + ':' : ''}${localData.pkgver}-${localData.pkgrel}) -> new(${finalData.epoch ? finalData.epoch + ':' : ''}${finalData.pkgver}-${finalData.pkgrel})`);
-                                }
-                            } else {
-                                updateFound = true;
-                            }
-                        }
-
-                        let shouldBuild = updateFound;
+                        let shouldBuild = true;
                         if (config.repo) {
                             const alreadyBuilt = await hasBuiltPackage(config.repo, pkg.pkgname, finalData.pkgver, finalData.pkgrel, process.cwd());
                             if (alreadyBuilt) {
                                 console.log(`[Preaur] Package ${pkg.pkgname}-${finalData.pkgver}-${finalData.pkgrel} already exists in repo. Skipping build.`);
                                 shouldBuild = false;
-                            } else if (!shouldBuild) {
-                                console.log(`[Preaur] Package ${pkg.pkgname}-${finalData.pkgver}-${finalData.pkgrel} not found in repo, forcing build.`);
-                                shouldBuild = true;
                             }
                         }
 
@@ -265,8 +202,8 @@ program
             };
 
             // Kick off processing (they will wait on dependencies internally)
-            for (const pkg of buildablePackages) {
-                processPackage(pkg); // Don't await here, we let them orchestrate themselves
+            for (const plan of buildPlans) {
+                processPackage(plan); // Don't await here, we let them orchestrate themselves
             }
 
             // Wait for all pre-registered topological promises to resolve
