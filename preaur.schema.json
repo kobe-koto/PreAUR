@@ -300,7 +300,8 @@
     },
     "required": [
         "maintainers",
-        "packages"
+        "packages",
+        "repo"
     ],
     "type": "object"
 }

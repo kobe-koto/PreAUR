@@ -80,7 +80,7 @@ export interface PreaurConfig {
     default_maintainer?: string;
     config?: PreaurRuntimeConfig;
     resources?: PreaurResources;
-    repo?: PreaurRepo;
+    repo: PreaurRepo;
     packages: PreaurPackage[];
 }
 

@@ -30,7 +30,7 @@ resources:
   parallel: 2
 
 repo:
-  # Defines the local output registry name
+  # REQUIRED. Defines the local output registry name
   # Resulting structure inside `repo/myrepo/` will include `myrepo.db.tar.gz` and copied `.pkg.tar.zst` files 
   name: "myrepo" 
 
