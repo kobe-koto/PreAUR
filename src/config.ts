@@ -11,7 +11,7 @@ export interface PreaurMaintainer {
 
 export interface PreaurResources {
     cpu?: string; // e.g., "-2", "2", "--all"
-    parallel?: string | number; // For concurrent package processing
+    parallel: number; // For concurrent package processing, at least 1, by default 2
     updateCheckCocurrent: number; // Number of concurrent version checks, at least/by default 1
 }
 
@@ -88,7 +88,7 @@ export interface PreaurConfig {
 export async function loadConfig(configPath: string): Promise<PreaurConfig> {
     try {
         const fileContents = await readFile(path.resolve(configPath), 'utf8');
-        const config = parse(fileContents) as PreaurConfig;
+        const config = parse(fileContents);
 
         // Basic validation
         if (!config.maintainers || !Array.isArray(config.maintainers)) {
@@ -105,7 +105,7 @@ export async function loadConfig(configPath: string): Promise<PreaurConfig> {
             throw new Error('Config config.trustedAurGitPrefixes must be an array');
         }
 
-        const maintainerIds = new Set(config.maintainers.map(m => m.id));
+        const maintainerIds = new Set(config.maintainers.map((m: PreaurMaintainer) => m.id));
         if (config.default_maintainer && !maintainerIds.has(config.default_maintainer)) {
             throw new Error(`Config default_maintainer references unknown maintainer: ${config.default_maintainer}`);
         }
@@ -124,11 +124,12 @@ export async function loadConfig(configPath: string): Promise<PreaurConfig> {
         }
 
         config.resources ??= {};
+        config.resources.parallel = Math.max(1, +config.resources.parallel || 2)
         config.resources.updateCheckCocurrent = Math.max(1, +config.resources.updateCheckCocurrent || 1);
         // have use an exclamation mark to make ts happy... 
         // undefined would be converted to NaN which would fallback to 1 which is expected
 
-        return config;
+        return config as PreaurConfig;
     } catch (error: any) {
         throw new Error(`Failed to load config from ${configPath}: ${error.message}`);
     }

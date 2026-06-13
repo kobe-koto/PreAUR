@@ -208,16 +208,14 @@
                     "type": "string"
                 },
                 "parallel": {
-                    "type": [
-                        "string",
-                        "number"
-                    ]
+                    "type": "number"
                 },
                 "updateCheckCocurrent": {
                     "type": "number"
                 }
             },
             "required": [
+                "parallel",
                 "updateCheckCocurrent"
             ],
             "type": "object"
