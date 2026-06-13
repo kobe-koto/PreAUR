@@ -195,7 +195,6 @@
                 }
             },
             "required": [
-                "maintainer",
                 "pkgname"
             ],
             "type": "object"
@@ -276,6 +275,9 @@
     "properties": {
         "config": {
             "$ref": "#/definitions/PreaurRuntimeConfig"
+        },
+        "default_maintainer": {
+            "type": "string"
         },
         "maintainers": {
             "items": {

@@ -18,6 +18,8 @@ maintainers:
     name: "John Doe"
     email: "john.doe@example.com"
 
+default_maintainer: "johndoe"
+
 resources:
   # Controls $MAKEFLAGS internally
   # "-2" -> uses (total_cores - 2)
@@ -33,6 +35,8 @@ repo:
   name: "myrepo" 
 
 packages:
+  # packages[].maintainer is optional. If omitted, default_maintainer is used.
+  #
   # If an AUR package is orphaned, PreAUR skips its build unless this is set
   # on that package:
   # allow_orphan_package_build: true

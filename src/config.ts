@@ -64,7 +64,7 @@ export interface PreaurDummyPackage {
 
 export interface PreaurPackage {
     pkgname: string;
-    maintainer: string;
+    maintainer?: string;
     allow_orphan_package_build?: boolean;
     aur_pkgname?: string;
     git?: string;
@@ -77,6 +77,7 @@ export interface PreaurPackage {
 
 export interface PreaurConfig {
     maintainers: PreaurMaintainer[];
+    default_maintainer?: string;
     config?: PreaurRuntimeConfig;
     resources?: PreaurResources;
     repo?: PreaurRepo;
@@ -101,6 +102,24 @@ export async function loadConfig(configPath: string): Promise<PreaurConfig> {
         }
         if (config.config?.trustedAurGitPrefixes && !Array.isArray(config.config.trustedAurGitPrefixes)) {
             throw new Error('Config config.trustedAurGitPrefixes must be an array');
+        }
+
+        const maintainerIds = new Set(config.maintainers.map(m => m.id));
+        if (config.default_maintainer && !maintainerIds.has(config.default_maintainer)) {
+            throw new Error(`Config default_maintainer references unknown maintainer: ${config.default_maintainer}`);
+        }
+
+        for (const pkg of config.packages) {
+            if (!pkg.maintainer) {
+                if (!config.default_maintainer) {
+                    throw new Error(`Package ${pkg.pkgname} missing maintainer and config default_maintainer is not set`);
+                }
+                pkg.maintainer = config.default_maintainer;
+            }
+
+            if (!maintainerIds.has(pkg.maintainer)) {
+                throw new Error(`Package ${pkg.pkgname} references unknown maintainer: ${pkg.maintainer}`);
+            }
         }
 
         return config;
