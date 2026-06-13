@@ -31,6 +31,7 @@ jobs:
       - name: Prepare Artifact
         run: |
           mv ./dist/index.js ./dist/preaur.min.js
+          mv ./dist/index.js.map ./dist/preaur.min.js.map
           mv ./preaur.schema.json ./dist/preaur.schema.json
 
       - name: Generate Release Notes
@@ -45,6 +46,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           body_path: release.md
-          files: ./dist/preaur.min.js, ./dist/preaur.schema.json
+          files: ./dist/preaur.min.js, ./dist/preaur.min.js.map, ./dist/preaur.schema.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

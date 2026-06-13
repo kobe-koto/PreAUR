@@ -5,7 +5,7 @@
     "version": "0.0.5",
     "scripts": {
         "start": "bun run src/index.ts",
-        "build": "bun build ./src/index.ts --target bun --outdir ./dist --minify",
+        "build": "bun ./build.ts",
         "test": "bun test",
         "gen-schema": "typescript-json-schema --required --noExtraProps --out ./preaur.schema.json ./src/config.ts PreaurConfig"
     },
@@ -22,6 +22,7 @@
         "axios": "^1.13.6",
         "commander": "^14.0.3",
         "dotenv": "^17.3.1",
+        "picocolors": "^1.1.1",
         "simple-git": "^3.32.3",
         "yaml": "^2.8.2"
     }
