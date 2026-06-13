@@ -84,7 +84,8 @@ export async function runPackageVersionCheck(
     const skippedPackages: PackageVersionCheckResult['skippedPackages'] = [];
 
     for (const pkg of packages) {
-        console.log(`[Check] Preparing version check for ${pkg.pkgname}...`);
+        console.log(``);
+        console.log(`[Check] [${pkg.pkgname}] Preparing version check...`);
 
         const pkgbuildsBase = path.resolve(baseDir, 'pkgbuilds');
         const workDirs = getPackageWorkDirs(
@@ -105,13 +106,13 @@ export async function runPackageVersionCheck(
 
         let templateUpdates: Record<string, string> = {};
         if (pkg.checker) {
-            console.log(`[Checker] Checking version using ${pkg.checker.type} provider for ${pkg.pkgname}...`);
+            console.log(`[Checker] [${pkg.pkgname}] Checking version using ${pkg.checker.type} provider...`);
             const checkerRes = await fetchVersion(pkg.checker);
             if (checkerRes) {
-                console.log(`[Checker] Latest version for ${pkg.pkgname} is v${checkerRes.version}${checkerRes.epoch ? ` (epoch: ${checkerRes.epoch})` : ''}`);
+                console.log(`[Checker] [${pkg.pkgname}] The latest version is v${checkerRes.version}${checkerRes.epoch ? ` (epoch: ${checkerRes.epoch})` : ''}`);
                 templateUpdates = resolveTemplateUpdates(pkg, checkerRes);
             } else {
-                console.log(`[Checker] Could not ascertain latest version for ${pkg.pkgname}.`);
+                console.log(`[Checker] [${pkg.pkgname}] Could not ascertain latest version.`);
             }
         }
 
@@ -125,6 +126,7 @@ export async function runPackageVersionCheck(
         const versionChanged = pacmanVersionChanged(localData, finalData);
         let missingRepoArtifact = false;
 
+        console.log(`[Check] [${pkg.pkgname}] Checking version...`);
         if (!versionChanged) {
             if (repo) {
                 const alreadyBuilt = await hasBuilt(repo, pkg.pkgname, finalData, baseDir);
@@ -133,30 +135,30 @@ export async function runPackageVersionCheck(
                         pkg,
                         reason: `version unchanged and artifact already exists (${formatPacmanVersion(finalData)})`,
                     });
-                    console.log(`[Check] Skipping ${pkg.pkgname}: version unchanged and artifact already exists (${formatPacmanVersion(finalData)}).`);
+                    console.log(`[Check] [${pkg.pkgname}] Skipping: version unchanged and artifact already exists (${formatPacmanVersion(finalData)}).`);
                     continue;
                 }
 
-                console.log(`[Check] ${pkg.pkgname} version is unchanged (${formatPacmanVersion(finalData)}), but no matching repo artifact exists; scheduling build.`);
+                console.log(`[Check] [${pkg.pkgname}] version is unchanged (${formatPacmanVersion(finalData)}), but no matching repo artifact exists; scheduling build.`);
                 missingRepoArtifact = true;
             } else {
                 skippedPackages.push({
                     pkg,
                     reason: `version unchanged (${formatPacmanVersion(finalData)})`,
                 });
-                console.log(`[Check] Skipping ${pkg.pkgname}: version unchanged (${formatPacmanVersion(finalData)}).`);
+                console.log(`[Check] [${pkg.pkgname}] Skipping: version unchanged (${formatPacmanVersion(finalData)}).`);
                 continue;
             }
         }
 
         if (hasPacmanVersion(localData)) {
             if (versionChanged) {
-                console.log(`[Check] Update detected for ${pkg.pkgname}: ${formatPacmanVersion(localData)} -> ${formatPacmanVersion(finalData)}`);
+                console.log(`[Check] [${pkg.pkgname}] Update detected: ${formatPacmanVersion(localData)} -> ${formatPacmanVersion(finalData)}`);
             } else if (missingRepoArtifact) {
-                console.log(`[Check] Rebuild required for ${pkg.pkgname}: repo artifact missing for ${formatPacmanVersion(finalData)}.`);
+                console.log(`[Check] [${pkg.pkgname}] Rebuild required: repo artifact missing for ${formatPacmanVersion(finalData)}.`);
             }
         } else {
-            console.log(`[Check] No stored successful build version for ${pkg.pkgname}; scheduling build for ${formatPacmanVersion(finalData)}.`);
+            console.log(`[Check] [${pkg.pkgname}] No stored successful build version; scheduling build for ${formatPacmanVersion(finalData)}.`);
         }
 
         buildPlans.push({
