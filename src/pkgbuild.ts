@@ -125,7 +125,7 @@ export async function updateDynamicPkgver(pkgbuildPath: string, env?: CommandEnv
         // -o: extract and download sources
         // -d: skip dependency checks
         // -c: clean up working directory after
-        await execAsync('makepkg -odc --noconfirm', {
+        await execAsync('makepkg -odc --noconfirm --skipinteg', {
             cwd: pkgbuildDir,
             env: env ? { ...process.env, ...env } : process.env,
         });
