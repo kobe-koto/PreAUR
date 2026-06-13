@@ -2,6 +2,26 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "additionalProperties": false,
     "definitions": {
+        "PkgBuildParser": {
+            "enum": [
+                "makepkg",
+                "native"
+            ],
+            "type": "string"
+        },
+        "PreaurChecker": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/PreaurGitHubChecker"
+                },
+                {
+                    "$ref": "#/definitions/PreaurDebChecker"
+                },
+                {
+                    "$ref": "#/definitions/PreaurRpmChecker"
+                }
+            ]
+        },
         "PreaurDebChecker": {
             "additionalProperties": false,
             "properties": {
@@ -147,17 +167,7 @@
                     "type": "string"
                 },
                 "checker": {
-                    "anyOf": [
-                        {
-                            "$ref": "#/definitions/PreaurGitHubChecker"
-                        },
-                        {
-                            "$ref": "#/definitions/PreaurDebChecker"
-                        },
-                        {
-                            "$ref": "#/definitions/PreaurRpmChecker"
-                        }
-                    ]
+                    "$ref": "#/definitions/PreaurChecker"
                 },
                 "dummy_packages": {
                     "items": {
@@ -251,11 +261,7 @@
             "additionalProperties": false,
             "properties": {
                 "pkgbuildParser": {
-                    "enum": [
-                        "makepkg",
-                        "native"
-                    ],
-                    "type": "string"
+                    "$ref": "#/definitions/PkgBuildParser"
                 },
                 "trustedAurGitPrefixes": {
                     "items": {
