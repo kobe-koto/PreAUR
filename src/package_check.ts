@@ -170,6 +170,18 @@ async function processPackageVersionCheck(
     const finalData = await parse(pkgbuildPath, pkgbuildParser, env);
     const localData = versionStore.get(pkg.pkgname);
     const versionChanged = pacmanVersionChanged(localData, finalData);
+
+    if (!hasPacmanVersion(localData) && repo) {
+        const alreadyBuilt = await hasBuilt(repo, pkg.pkgname, finalData, baseDir);
+        if (alreadyBuilt) {
+            versionStore.set(pkg.pkgname, finalData);
+            await versionStore.save();
+            return {
+                skipped: true,
+                reason: `no stored successful build version but artifact already exists; synced version store (${formatPacmanVersion(finalData)})`,
+            };
+        }
+    }
     
     let missingRepoArtifact = false;
     if (!versionChanged) { // version unchanged
@@ -184,7 +196,10 @@ async function processPackageVersionCheck(
                 missingRepoArtifact = true;
             }
         } else {
-            throw new Error(`No repo provided to check for existing artifact.`);
+            return {
+                skipped: true,
+                reason: `version unchanged (${formatPacmanVersion(finalData)})`,
+            };
         }
     }
 

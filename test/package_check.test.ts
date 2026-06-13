@@ -51,6 +51,32 @@ describe('runPackageVersionCheck', () => {
         expect(store.get('demo')?.pkgrel).toBeUndefined();
     });
 
+    test('syncs missing stored version and skips build when the repo artifact already exists', async () => {
+        const baseDir = await makeBaseDir();
+        const store = new VersionStore(baseDir);
+        await store.load();
+
+        const packages: PreaurPackage[] = [{ pkgname: 'demo', maintainer: 'preaur-owner' }];
+        const deps = makeDeps({ epoch: 2, pkgver: '1.0.0', pkgrel: 1 });
+        deps.hasBuiltPackage = async () => true;
+
+        const result = await runPackageVersionCheck(packages, store, {
+            baseDir,
+            repo: { name: 'localrepo' },
+            deps,
+        });
+
+        expect(result.buildPlans).toEqual([]);
+        expect(result.skippedPackages.map(item => item.reason)).toEqual([
+            'no stored successful build version but artifact already exists; synced version store (2:1.0.0-1)',
+        ]);
+        expect(store.get('demo')).toMatchObject({ epoch: 2, pkgver: '1.0.0', pkgrel: 1 });
+
+        const reloadedStore = new VersionStore(baseDir);
+        await reloadedStore.load();
+        expect(reloadedStore.get('demo')).toMatchObject({ epoch: 2, pkgver: '1.0.0', pkgrel: 1 });
+    });
+
     test('skips packages when the final PKGBUILD version matches the stored version', async () => {
         const baseDir = await makeBaseDir();
         const store = new VersionStore(baseDir);
