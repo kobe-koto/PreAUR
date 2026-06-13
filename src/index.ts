@@ -77,6 +77,7 @@ program
                     pkgbuildParser,
                     repo: config.repo,
                     sessionLogDir: getSessionLogDir(),
+                    updateCheckCocurrent: config.resources.updateCheckCocurrent,
                 }
             );
 

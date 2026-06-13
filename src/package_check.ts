@@ -65,6 +65,7 @@ export async function runPackageVersionCheck(
         repo?: PreaurRepo;
         sessionLogDir?: string;
         deps?: PackageVersionCheckDeps;
+        updateCheckCocurrent?: number;
     } = {}
 ): Promise<PackageVersionCheckResult> {
     const {
@@ -73,6 +74,56 @@ export async function runPackageVersionCheck(
         repo,
         sessionLogDir,
         deps = {},
+        updateCheckCocurrent = 1
+    } = options;
+
+    console.log(UpdateCheckerMessager(`Checking package versions for ${packages.length} package(s) with concurrency of ${updateCheckCocurrent}...`));
+
+    const buildPlans: PackageBuildPlan[] = [];
+    const skippedPackages: PackageVersionCheckResult['skippedPackages'] = [];
+
+    // generate all tasks first to enable concurrent processing, especially for version checks which may involve network requests
+    const tasks = packages.map(pkg => async () => {
+        await processPackageVersionCheck(pkg, versionStore, {
+            baseDir,
+            pkgbuildParser,
+            repo,
+            sessionLogDir,
+            deps,
+        }).then(result => {
+            if ('skipped' in result && result.skipped && result.reason) {
+                skippedPackages.push({ pkg, reason: result.reason});
+            } else {
+                buildPlans.push(result as PackageBuildPlan);
+            }
+        }).catch(e => {
+            console.error(UpdateCheckerMessager(`Error processing package ${pkg.pkgname}: ${e instanceof Error ? e.message : String(e)}`));
+            skippedPackages.push({ pkg, reason: `error during processing: ${e instanceof Error ? e.message : String(e)}` });
+        });
+    });
+
+    await limitConcurrency(tasks, updateCheckCocurrent);
+
+    return { buildPlans, skippedPackages };
+}
+
+async function processPackageVersionCheck(
+    pkg: PreaurPackage,
+    versionStore: VersionStore,
+    options: {
+        baseDir: string;
+        pkgbuildParser: PkgBuildParser;
+        repo?: PreaurRepo;
+        sessionLogDir?: string;
+        deps: PackageVersionCheckDeps;
+    }
+): Promise<PackageBuildPlan | { skipped: true; reason?: string }> {
+    const {
+        baseDir,
+        pkgbuildParser,
+        repo,
+        sessionLogDir,
+        deps,
     } = options;
 
     const prepare = deps.preparePackageDiff ?? preparePackageDiff;
@@ -82,95 +133,96 @@ export async function runPackageVersionCheck(
     const updatePkg = deps.updatePkgBuild ?? updatePkgBuild;
     const hasBuilt = deps.hasBuiltPackage ?? hasBuiltPackage;
 
-    console.log(UpdateCheckerMessager(`Checking package versions for ${packages.length} package(s)...`));
+    const pkgMessager = constructMessager('Update Checker', pkg.pkgname);
+    const pkgbuildsBase = path.resolve(baseDir, 'pkgbuilds');
+    const workDirs = getPackageWorkDirs(
+        baseDir,
+        pkg.pkgname,
+        sessionLogDir ? path.resolve(sessionLogDir, pkg.pkgname) : undefined
+    );
+    await ensurePackageCheckWorkDirs(workDirs);
+    await writePackageMakepkgConfig(workDirs);
+    const env = packageWorkEnv(workDirs);
 
-    const buildPlans: PackageBuildPlan[] = [];
-    const skippedPackages: PackageVersionCheckResult['skippedPackages'] = [];
+    const { path: pkgDir, git }: GitCloneResult = await prepare(
+        pkg.pkgname,
+        pkg.git,
+        !!pkg.push,
+        pkgbuildsBase
+    );
 
-    for (const pkg of packages) {
-        const pkgMessager = constructMessager('Update Checker', pkg.pkgname);
-        const pkgbuildsBase = path.resolve(baseDir, 'pkgbuilds');
-        const workDirs = getPackageWorkDirs(
-            baseDir,
-            pkg.pkgname,
-            sessionLogDir ? path.resolve(sessionLogDir, pkg.pkgname) : undefined
-        );
-        await ensurePackageCheckWorkDirs(workDirs);
-        await writePackageMakepkgConfig(workDirs);
-        const env = packageWorkEnv(workDirs);
-
-        const { path: pkgDir, git }: GitCloneResult = await prepare(
-            pkg.pkgname,
-            pkg.git,
-            !!pkg.push,
-            pkgbuildsBase
-        );
-
-        let templateUpdates: Record<string, string> = {};
-        if (pkg.checker) {
-            const checkerRes = await fetchVersion(pkg.checker);
-            if (checkerRes) {
-                templateUpdates = resolveTemplateUpdates(pkg, checkerRes, pkgMessager);
-            } else {
-                console.warn(pkgMessager(pc.yellow(`Could not ascertain latest version from ${pkg.checker.type}.`)));
-                console.debug(pkgMessager(pc.gray(`Original reponse: ${JSON.stringify(checkerRes)}`)));
-            }
-        }
-
-        const pkgbuildPath = path.resolve(pkgDir, 'PKGBUILD');
-        await updateDynamic(pkgbuildPath, env);
-
-        const builderType = pkg.builder || 'extra-x86_64-build';
-        const pkgbuildModified = await updatePkg(pkg.pkgname, pkgbuildPath, templateUpdates, false, pkgbuildParser, env);
-        const finalData = await parse(pkgbuildPath, pkgbuildParser, env);
-        const localData = versionStore.get(pkg.pkgname);
-        const versionChanged = pacmanVersionChanged(localData, finalData);
-        let missingRepoArtifact = false;
-
-        if (!versionChanged) { // version unchanged
-            if (repo) {
-                const alreadyBuilt = await hasBuilt(repo, pkg.pkgname, finalData, baseDir);
-                if (alreadyBuilt) {
-                    skippedPackages.push({
-                        pkg,
-                        reason: `version unchanged and artifact already exists (${formatPacmanVersion(finalData)})`,
-                    });
-                    continue;
-                } else {
-                    missingRepoArtifact = true;
-                }
-            } else {
-                throw new Error(`No repo provided to check for existing artifact.`);
-            }
+    let templateUpdates: Record<string, string> = {};
+    if (pkg.checker) {
+        const checkerRes = await fetchVersion(pkg.checker);
+        if (checkerRes) {
+            templateUpdates = resolveTemplateUpdates(pkg, checkerRes, pkgMessager);
         } else {
-            skippedPackages.push({
-                pkg,
-                reason: `version unchanged (${formatPacmanVersion(finalData)})`,
-            });
-            continue;
+            console.warn(pkgMessager(pc.yellow(`Could not ascertain latest version from ${pkg.checker.type}.`)));
+            console.debug(pkgMessager(pc.gray(`Original reponse: ${JSON.stringify(checkerRes)}`)));
         }
-
-        if (hasPacmanVersion(localData)) {
-            if (versionChanged) {
-                console.log(pkgMessager(pc.green(`Update detected: ${formatPacmanVersion(localData)} -> ${formatPacmanVersion(finalData)}`)));
-            } else if (missingRepoArtifact) {
-                console.log(pkgMessager(pc.green(`Rebuild required: repo artifact missing for ${formatPacmanVersion(finalData)}.`)));
-            }
-        } else {
-            console.log(pkgMessager(pc.green(`No stored successful build version; scheduling build for ${formatPacmanVersion(finalData)}.`)));
-        }
-
-        buildPlans.push({
-            pkg,
-            pkgDir,
-            git,
-            builderType,
-            finalData,
-            pkgbuildModified,
-            workDirs,
-            env,
-        });
     }
 
-    return { buildPlans, skippedPackages };
+    const pkgbuildPath = path.resolve(pkgDir, 'PKGBUILD');
+    await updateDynamic(pkgbuildPath, env);
+
+    const builderType = pkg.builder || 'extra-x86_64-build';
+    const pkgbuildModified = await updatePkg(pkg.pkgname, pkgbuildPath, templateUpdates, false, pkgbuildParser, env);
+    const finalData = await parse(pkgbuildPath, pkgbuildParser, env);
+    const localData = versionStore.get(pkg.pkgname);
+    const versionChanged = pacmanVersionChanged(localData, finalData);
+    
+    let missingRepoArtifact = false;
+    if (!versionChanged) { // version unchanged
+        if (repo) {
+            const alreadyBuilt = await hasBuilt(repo, pkg.pkgname, finalData, baseDir);
+            if (alreadyBuilt) {
+                return {
+                    skipped: true,
+                    reason: `version unchanged and artifact already exists (${formatPacmanVersion(finalData)})`,
+                }
+            } else {
+                missingRepoArtifact = true;
+            }
+        } else {
+            throw new Error(`No repo provided to check for existing artifact.`);
+        }
+    }
+
+    if (hasPacmanVersion(localData)) {
+        if (versionChanged) {
+            console.log(pkgMessager(pc.green(`Update detected: ${formatPacmanVersion(localData)} -> ${formatPacmanVersion(finalData)}`)));
+        } else if (missingRepoArtifact) {
+            console.log(pkgMessager(pc.green(`Rebuild required: repo artifact missing for ${formatPacmanVersion(finalData)}.`)));
+        }
+    } else {
+        console.log(pkgMessager(pc.green(`No stored successful build version; scheduling build for ${formatPacmanVersion(finalData)}.`)));
+    }
+
+    return {
+        pkg,
+        pkgDir,
+        git,
+        builderType,
+        finalData,
+        pkgbuildModified,
+        workDirs,
+        env,
+    };
+}
+
+
+async function limitConcurrency(tasks: (() => Promise<void>)[], limit: number) {
+  const iterator = tasks.entries();
+  
+  async function doWork() {
+    for (const [index, task] of iterator) {
+      await task();
+    }
+  }
+
+  const workers = Array(Math.min(limit, tasks.length))
+    .fill(null)
+    .map(() => doWork());
+
+  await Promise.all(workers);
 }

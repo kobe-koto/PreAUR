@@ -28,6 +28,7 @@ resources:
   # "4" -> explicitly use 4 cores
   cpu: "-2" 
   parallel: 2
+  updateCheckCocurrent: 5 # at least / by default 1, this may cause rate-limiting issues if set too high
 
 repo:
   # REQUIRED. Defines the local output registry name

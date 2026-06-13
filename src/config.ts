@@ -12,6 +12,7 @@ export interface PreaurMaintainer {
 export interface PreaurResources {
     cpu?: string; // e.g., "-2", "2", "--all"
     parallel?: string | number; // For concurrent package processing
+    updateCheckCocurrent: number; // Number of concurrent version checks, at least/by default 1
 }
 
 export interface PreaurRepo {
@@ -79,7 +80,7 @@ export interface PreaurConfig {
     maintainers: PreaurMaintainer[];
     default_maintainer?: string;
     config?: PreaurRuntimeConfig;
-    resources?: PreaurResources;
+    resources: PreaurResources;
     repo: PreaurRepo;
     packages: PreaurPackage[];
 }
@@ -121,6 +122,11 @@ export async function loadConfig(configPath: string): Promise<PreaurConfig> {
                 throw new Error(`Package ${pkg.pkgname} references unknown maintainer: ${pkg.maintainer}`);
             }
         }
+
+        config.resources ??= {};
+        config.resources.updateCheckCocurrent = Math.max(1, +config.resources.updateCheckCocurrent || 1);
+        // have use an exclamation mark to make ts happy... 
+        // undefined would be converted to NaN which would fallback to 1 which is expected
 
         return config;
     } catch (error: any) {

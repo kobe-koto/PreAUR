@@ -212,8 +212,14 @@
                         "string",
                         "number"
                     ]
+                },
+                "updateCheckCocurrent": {
+                    "type": "number"
                 }
             },
+            "required": [
+                "updateCheckCocurrent"
+            ],
             "type": "object"
         },
         "PreaurRpmChecker": {
@@ -295,7 +301,8 @@
     "required": [
         "maintainers",
         "packages",
-        "repo"
+        "repo",
+        "resources"
     ],
     "type": "object"
 }
