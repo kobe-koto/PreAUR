@@ -8,7 +8,7 @@ import { preparePackageDiff, type GitCloneResult } from './git';
 import { parsePkgBuild, updateDynamicPkgver, updatePkgBuild, type PkgBuildData, type PkgBuildParser } from './pkgbuild';
 import { VersionStore } from './version_store';
 import { hasBuiltPackage } from './repo';
-import { ensurePackageWorkDirs, getPackageWorkDirs, packageWorkEnv, type PackageWorkDirs } from './workdirs';
+import { ensurePackageCheckWorkDirs, getPackageWorkDirs, packageWorkEnv, type PackageWorkDirs } from './workdirs';
 import { formatPacmanVersion, hasPacmanVersion, pacmanVersionChanged } from './pacman_version';
 
 export interface PackageBuildPlan {
@@ -92,7 +92,7 @@ export async function runPackageVersionCheck(
             pkg.pkgname,
             sessionLogDir ? path.resolve(sessionLogDir, pkg.pkgname) : undefined
         );
-        await ensurePackageWorkDirs(workDirs);
+        await ensurePackageCheckWorkDirs(workDirs);
         const env = packageWorkEnv(workDirs);
 
         const { path: pkgDir, git }: GitCloneResult = await prepare(

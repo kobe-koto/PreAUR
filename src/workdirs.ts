@@ -25,11 +25,14 @@ export function getPackageWorkDirs(baseDir: string, pkgname: string, logdest?: s
     };
 }
 
-export async function ensurePackageWorkDirs(workDirs: PackageWorkDirs): Promise<void> {
+export async function ensurePackageCheckWorkDirs(workDirs: PackageWorkDirs): Promise<void> {
     await fs.mkdir(workDirs.srcdest, { recursive: true });
-    await fs.mkdir(workDirs.logdest, { recursive: true });
     await fs.mkdir(workDirs.builddir, { recursive: true });
     await fs.mkdir(workDirs.pkgdest, { recursive: true });
+}
+
+export async function ensurePackageLogDir(workDirs: PackageWorkDirs): Promise<void> {
+    await fs.mkdir(workDirs.logdest, { recursive: true });
 }
 
 export function packageWorkEnv(workDirs: PackageWorkDirs): Record<string, string> {
