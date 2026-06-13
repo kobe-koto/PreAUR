@@ -135,7 +135,7 @@ describe('runPackageVersionCheck', () => {
         let capturedUpdates: Record<string, string> | undefined;
         const deps = makeDeps({ pkgver: '2.0.0', pkgrel: 1 }, true);
         deps.fetchLatestVersion = async () => ({ version: '2.0.0' });
-        deps.updatePkgBuild = async (pkgbuildPath, updates) => {
+        deps.updatePkgBuild = async (pkgname, pkgbuildPath, updates) => {
             capturedUpdates = updates;
             return true;
         };
@@ -171,7 +171,7 @@ describe('runPackageVersionCheck', () => {
             dynamicEnv = env;
             return false;
         };
-        deps.updatePkgBuild = async (pkgbuildPath, updates, forceBumpRel, parser, env) => {
+        deps.updatePkgBuild = async (pkgname, pkgbuildPath, updates, forceBumpRel, parser, env) => {
             updateEnv = env;
             return false;
         };
@@ -210,7 +210,7 @@ describe('runPackageVersionCheck', () => {
 
         let updateEnv: Record<string, string> | undefined;
         const deps = makeDeps({ pkgver: '1.0.0', pkgrel: 1 });
-        deps.updatePkgBuild = async (pkgbuildPath, updates, forceBumpRel, parser, env) => {
+        deps.updatePkgBuild = async (pkgname, pkgbuildPath, updates, forceBumpRel, parser, env) => {
             updateEnv = env;
             return false;
         };

@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import pc from "picocolors";
 
 let sessionLogDir = '';
 
@@ -95,4 +96,12 @@ export function createTaskLogger(pkgname: string): fs.WriteStream {
         fs.mkdirSync(taskLogDir, { recursive: true });
     }
     return fs.createWriteStream(logFile, { flags: 'a' });
+}
+
+export function constructMessager (category: string, subcategory?: string): (message: string) => string {
+    return (message) => (
+        subcategory ?
+        `${pc.magenta(`[${category}]`)} ${pc.blue(`[${subcategory}]`)} ${message}` :
+        `${pc.magenta(`[${category}]`)} ${message}`
+    );
 }

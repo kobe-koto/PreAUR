@@ -9,7 +9,7 @@ import { commitAndPush } from './git';
 import { buildPackage } from './builder';
 import { createDummyPackages } from './dummy';
 import { manageRepository, hasBuiltPackage, resolveBuiltPackage } from './repo';
-import { initMainLogger, createTaskLogger, getSessionLogDir, getTaskLogPath, loggerContext } from './logger';
+import { initMainLogger, createTaskLogger, getSessionLogDir, getTaskLogPath, loggerContext, constructMessager } from './logger';
 import { Semaphore } from './semaphore';
 import { ChrootPool } from './chroot_pool';
 import { VersionStore } from './version_store';
@@ -27,6 +27,7 @@ try {
   displayVersion = version;
 }
 
+const PreaurMessager = constructMessager('PreAUR');
 const program = new Command();
 program
     .name('preaur')
@@ -37,7 +38,7 @@ program
     .action(async (options) => {
         try {
             initMainLogger(process.cwd());
-            console.log(`[Preaur] Loading config from ${options.config}`);
+            console.log(PreaurMessager(`Loading config from ${options.config}`));
 
             const configPath = path.resolve(process.cwd(), options.config);
             const config = await loadConfig(configPath);
@@ -48,7 +49,7 @@ program
                 : config.packages;
 
             if (packagesToProcess.length === 0) {
-                console.log('[Preaur] No packages to process.');
+                console.log(PreaurMessager('No packages to process.'));
                 return;
             }
 
@@ -64,7 +65,7 @@ program
             );
 
             if (approvedPackages.length === 0) {
-                console.log('[Preaur] No packages are eligible for build after check phase.');
+                console.log(PreaurMessager('No packages are eligible for build after check phase.'));
                 return;
             }
 
@@ -80,7 +81,7 @@ program
             );
 
             if (buildPlans.length === 0) {
-                console.log('[Preaur] No packages have version updates after check phase.');
+                console.log(PreaurMessager('No packages have version updates after check phase.'));
                 return;
             }
 
@@ -123,7 +124,7 @@ program
                     if (config.repo) {
                         const alreadyBuilt = await hasBuiltPackage(config.repo, pkg.pkgname, finalData, process.cwd());
                         if (alreadyBuilt) {
-                            console.log(`[Preaur] Package ${pkg.pkgname}-${finalData.pkgver}-${finalData.pkgrel} already exists in repo. Skipping build.`);
+                            console.log(PreaurMessager(`Package ${pkg.pkgname}-${finalData.pkgver}-${finalData.pkgrel} already exists in repo. Skipping build.`));
                             shouldBuild = false;
                         }
                     }
@@ -136,7 +137,7 @@ program
 
                         await loggerContext.run(loggerStream, async () => {
                             console.log(`\n================================`);
-                            console.log(`[Preaur] Processing package: ${pkg.pkgname} (Logs streaming to ${taskLogPath})`);
+                            console.log(PreaurMessager(`Processing package: ${pkg.pkgname} (Logs streaming to ${taskLogPath})`));
                             console.log(`================================`);
 
                             try {
@@ -149,7 +150,7 @@ program
                                             const p = await resolveBuiltPackage(config.repo, dep, process.cwd());
                                             extraPaths.push(p);
                                         } catch (e: any) {
-                                            console.warn(`[Repo] Could not resolve dependency ${dep} inside repository for ${pkg.pkgname}. Make sure it is built!`);
+                                            console.warn(PreaurMessager(`[Repo] Could not resolve dependency ${dep} inside repository for ${pkg.pkgname}. Make sure it is built!`));
                                         }
                                     }
                                 }
@@ -191,7 +192,7 @@ program
                                 if ((pkgbuildModified || hasGitChanges) && pkg.push) {
                                     await commitAndPush(git, pkg.pkgname, finalData.pkgver, true);
                                 } else {
-                                    console.log(`[Preaur] Skipping push phase for ${pkg.pkgname}.`);
+                                    console.log(PreaurMessager(`Skipping push phase for ${pkg.pkgname}.`));
                                 }
 
                                 if (config.repo) {
@@ -203,16 +204,16 @@ program
                                 await versionStore.save();
 
                             } catch (pkgError: any) {
-                                console.error(`[Preaur] Error processing ${pkg.pkgname}: ${pkgError.message}`);
+                                console.error(PreaurMessager(`Error processing ${pkg.pkgname}: ${pkgError.message}`));
                             } finally {
                                 loggerStream.end();
                             }
                         });
                     } else {
-                        console.log(`[Preaur] Skipping build map execution for ${pkg.pkgname} since shouldBuild=false.`);
+                        console.log(PreaurMessager(`Skipping build map execution for ${pkg.pkgname} since shouldBuild=false.`));
                     }
                 } catch (pkgError: any) {
-                    console.error(`[Preaur] Error processing ${pkg.pkgname}: ${pkgError.message}`);
+                    console.error(PreaurMessager(`Error processing ${pkg.pkgname}: ${pkgError.message}`));
                 } finally {
                     pool.release();
                     // Notify any downstream packages waiting on this one that it has finished
@@ -229,9 +230,9 @@ program
             // Wait for all pre-registered topological promises to resolve
             await Promise.all(pkgPromises.values());
 
-            console.log(`\n[Preaur] All tasks finished.`);
+            console.log(PreaurMessager(`\nAll tasks finished.`));
         } catch (err: any) {
-            console.error(`[Preaur] Fatal Error: ${err.message}`);
+            console.error(PreaurMessager(`Fatal Error: ${err.message}`));
             process.exit(1);
         }
     });

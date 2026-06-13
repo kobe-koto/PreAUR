@@ -4,6 +4,7 @@ import * as path from 'node:path';
 
 import type { PreaurPackage } from './config';
 import { VersionStore, type VersionInfo } from './version_store';
+import { constructMessager } from './logger';
 
 const UNAPPROVED_PREFIX = '!!!';
 const BUILTIN_TRUSTED_AUR_GIT_PREFIXES = [
@@ -285,7 +286,8 @@ export async function runApprovalCheck(
     fetcher: AurMetadataFetcher = fetchAurPackageMetadata,
     trustedAurGitPrefixes: string[] = []
 ): Promise<ApprovalCheckResult> {
-    console.log(`[Check] Checking AUR ownership metadata for ${packages.length} package(s)...`);
+    const ApprovalCheckMessager = constructMessager('Approval Check');
+    console.log(ApprovalCheckMessager(`Checking AUR ownership metadata for ${packages.length} package(s)...`));
 
     const dataDir = path.resolve(baseDir, 'data');
     const knownPackages = new KnownListStore(path.resolve(dataDir, 'known_packages'));
@@ -326,7 +328,7 @@ export async function runApprovalCheck(
         if (source.type === 'custom_git') {
             const previous = versionStore.get(pkg.pkgname);
             if (!sameCustomGitSnapshot(previous)) {
-                console.warn(`[Check] Package source changed to custom git for ${pkg.pkgname}; marking package unapproved.`);
+                console.warn(ApprovalCheckMessager(`Package source changed to custom git for ${pkg.pkgname}; marking package unapproved.`));
                 knownPackages.markUnapproved(pkg.pkgname);
             }
 
@@ -350,7 +352,7 @@ export async function runApprovalCheck(
 
             const previous = versionStore.get(pkg.pkgname);
             if (!sameMaintainerSnapshot(previous, metadata)) {
-                console.warn(`[Check] AUR maintainer ownership changed for ${pkg.pkgname}; marking package unapproved.`);
+                console.warn(ApprovalCheckMessager(`AUR maintainer ownership changed for ${pkg.pkgname}; marking package unapproved.`));
                 knownPackages.markUnapproved(pkg.pkgname);
             }
 
@@ -407,7 +409,7 @@ export async function runApprovalCheck(
     }
 
     for (const skipped of skippedPackages) {
-        console.log(`[Check] Skipping ${skipped.pkg.pkgname}: ${skipped.reason}.`);
+        console.log(ApprovalCheckMessager(`Skipping ${skipped.pkg.pkgname}: ${skipped.reason}.`));
     }
 
     return { buildablePackages, skippedPackages };

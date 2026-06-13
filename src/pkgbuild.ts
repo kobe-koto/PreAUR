@@ -2,7 +2,9 @@ import * as fs from 'node:fs/promises';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
+import pc from 'picocolors';
 import type { PacmanVersion } from './pacman_version';
+import { constructMessager } from './logger';
 
 const execAsync = promisify(exec);
 type CommandEnv = Record<string, string>;
@@ -61,7 +63,7 @@ async function parsePkgBuildNative(pkgbuildPath: string): Promise<PkgBuildData> 
             if (resolved.pkgrel) pkgrelRaw = resolved.pkgrel;
             epochRaw = resolved.epoch ?? '0';
         } catch (e: any) {
-            console.warn(`[PKGBUILD] Failed to resolve bash-expanded version fields via sourcing: ${e.message}`);
+            console.warn(pc.yellow(`Failed to resolve bash-expanded version fields via sourcing: ${e.message}`));
         }
     }
 
@@ -117,13 +119,14 @@ export async function parsePkgBuild(pkgbuildPath: string, parser: PkgBuildParser
 }
 
 export async function updateDynamicPkgver(pkgbuildPath: string, env?: CommandEnv): Promise<boolean> {
+    const pkgMessager = constructMessager('PKGBUILD Updater', path.basename(path.dirname(pkgbuildPath)));
     const content = await fs.readFile(pkgbuildPath, 'utf8');
     if (!content.match(/^pkgver\(\)\s*\{/m)) {
         return false; // No pkgver() function
     }
 
     const pkgbuildDir = path.dirname(pkgbuildPath);
-    console.log(`[PKGBUILD] Found dynamic pkgver() in ${path.basename(pkgbuildDir)}, running makepkg -odc to update version...`);
+    console.log(pkgMessager(`Found dynamic pkgver() in ${path.basename(pkgbuildDir)}, running makepkg -odc to update version...`));
 
     try {
         // -o: extract and download sources
@@ -136,29 +139,31 @@ export async function updateDynamicPkgver(pkgbuildPath: string, env?: CommandEnv
         });
         return true;
     } catch (e: any) {
-        console.error(`[PKGBUILD] Failed to run makepkg for dynamic pkgver: ${e.message}`);
+        console.error(pkgMessager(pc.red(`Failed to run makepkg for dynamic pkgver: ${e.message}`)));
         return false;
     }
 }
 
 export async function updatePkgBuild(
+    pkgname: string,
     pkgbuildPath: string,
     updates: Record<string, string>,
     forceBumpRel: boolean = false,
     parser: PkgBuildParser = 'native',
     env?: CommandEnv
 ): Promise<boolean> {
+    const pkgMessager = constructMessager('PKGBUILD Updater', pkgname);
     let content = await fs.readFile(pkgbuildPath, 'utf8');
     const originalContent = content;
 
     const currentData = await parsePkgBuild(pkgbuildPath, parser, env);
 
     if (updates.pkgver && currentData.pkgver !== updates.pkgver) {
-        console.log(`[PKGBUILD] Updating pkgver from ${currentData.pkgver} to ${updates.pkgver} (pkgrel=1)`);
+        console.log(pkgMessager(`Updating pkgver from ${currentData.pkgver} to ${updates.pkgver} (pkgrel=1)`));
         content = content.replace(/^pkgver=.+$/m, `pkgver=${updates.pkgver}`);
         content = content.replace(/^pkgrel=\d+$/m, `pkgrel=1`);
     } else if (forceBumpRel) {
-        console.log(`[PKGBUILD] Bumping pkgrel from ${currentData.pkgrel} to ${currentData.pkgrel + 1}`);
+        console.log(pkgMessager(`Bumping pkgrel from ${currentData.pkgrel} to ${currentData.pkgrel + 1}`));
         content = content.replace(/^pkgrel=\d+$/m, `pkgrel=${currentData.pkgrel + 1}`);
     }
 
@@ -167,10 +172,10 @@ export async function updatePkgBuild(
         if (key === 'epoch') {
             if (!value || value === "0") continue;
             if (content.match(/^epoch=.+$/m)) {
-                console.log(`[PKGBUILD] Updating epoch to ${value}`);
+                console.log(pkgMessager(`Updating epoch to ${value}`));
                 content = content.replace(/^epoch=.+$/m, `epoch=${value}`);
             } else {
-                console.log(`[PKGBUILD] Injecting new epoch ${value}`);
+                console.log(pkgMessager(`Injecting new epoch ${value}`));
                 content = content.replace(/^pkgver=/m, `epoch=${value}\npkgver=`);
             }
             continue;
@@ -178,10 +183,10 @@ export async function updatePkgBuild(
 
         const regex = new RegExp(`^${key}=.*$`, 'm');
         if (content.match(regex)) {
-            console.log(`[PKGBUILD] Updating custom variable ${key}=${value}`);
+            console.log(pkgMessager(`Updating custom variable ${key}=${value}`));
             content = content.replace(regex, `${key}=${value}`);
         } else {
-            console.log(`[PKGBUILD] Injecting custom variable ${key}=${value}`);
+            console.log(pkgMessager(`Injecting custom variable ${key}=${value}`));
             content = content.replace(/^pkgver=/m, `${key}=${value}\npkgver=`);
         }
     }
@@ -195,13 +200,13 @@ export async function updatePkgBuild(
     // ALWAYS update checksums
     try {
         const pkgbuildDir = path.dirname(pkgbuildPath);
-        console.log(`[PKGBUILD] Running updpkgsums in ${pkgbuildDir}...`);
+        // console.log(pkgMessager(`Running updpkgsums in ${pkgbuildDir}...`));
         await execAsync('updpkgsums', {
             cwd: pkgbuildDir,
             env: env ? { ...process.env, ...env } : process.env,
         });
     } catch (e: any) {
-        console.error(`[PKGBUILD] Failed to run updpkgsums: ${e.message}`);
+        console.error(pkgMessager(pc.red(`Failed to run updpkgsums: ${e.message}`)));
         throw e;
     }
 

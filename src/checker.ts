@@ -2,8 +2,10 @@ import axios from 'axios';
 import * as zlib from 'node:zlib';
 import { promisify } from 'node:util';
 import type { PreaurChecker, PreaurDebChecker, PreaurGitHubChecker, PreaurRpmChecker } from './config';
+import { constructMessager } from './logger';
 
 const gunzip = promisify(zlib.gunzip);
+const UpdateCheckerMessager = constructMessager('Update Checker');
 
 function compareVersions(v1: string, v2: string): number {
     const parts1 = v1.split(/[-_.]/);
@@ -126,7 +128,7 @@ export class GitHubProvider implements CheckerProvider<PreaurGitHubChecker> {
 
             return { version: tag };
         } catch (error: any) {
-            console.error(`[Checker] Failed to fetch version from GitHub for ${repo}: ${error.message}`);
+            console.error(UpdateCheckerMessager(`Failed to fetch version from GitHub for ${repo}: ${error.message}`));
             throw error;
         }
     }
@@ -311,7 +313,7 @@ checkerRegistry.register(new RpmProvider());
 export async function fetchLatestVersion(config: PreaurChecker): Promise<CheckerResult | null> {
     const provider = checkerRegistry.get(config.type);
     if (!provider) {
-        console.warn(`[Checker] Unknown checker type: ${config.type}`);
+        console.warn(UpdateCheckerMessager(`Unknown checker type: ${config.type}`));
         return null;
     }
 
