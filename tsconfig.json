@@ -28,5 +28,18 @@
         "noUnusedLocals": false,
         "noUnusedParameters": false,
         "noPropertyAccessFromIndexSignature": false
-    }
+    },
+    "include": [
+        "src/**/*.ts",
+        "test/**/*.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist",
+        "pkgbuilds",
+        "work",
+        "repo",
+        "logs",
+        "tmp"
+    ]
 }
