@@ -33,10 +33,18 @@ jobs:
           mv ./dist/index.js ./dist/preaur.min.js
           mv ./preaur.schema.json ./dist/preaur.schema.json
 
+      - name: Generate Release Notes
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          bash ./.github/generate-release-notes.sh
+
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
+          body_path: release.md
           files: ./dist/preaur.min.js, ./dist/preaur.schema.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
