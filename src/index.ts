@@ -17,12 +17,21 @@ import { runApprovalCheck } from './approval';
 import { runPackageVersionCheck, type PackageBuildPlan } from './package_check';
 import { ensurePackageLogDir } from './workdirs';
 
-const program = new Command();
+declare const VERSION: string;
+let displayVersion;
+try {
+  displayVersion = VERSION;
+} catch (e) {
+  const { readFileSync } = await import("node:fs");
+  const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
+  displayVersion = version;
+}
 
+const program = new Command();
 program
     .name('preaur')
     .description('Archlinux AUR Package Builder Helper')
-    .version('0.1.0')
+    .version(displayVersion)
     .option('-c, --config <path>', 'path to config file', 'preaur.config.yaml')
     .option('-p, --pkg <name>', 'only run for a specific package')
     .action(async (options) => {
