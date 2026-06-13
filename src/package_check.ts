@@ -121,10 +121,10 @@ export async function runPackageVersionCheck(
         const pkgbuildModified = await updatePkg(pkgbuildPath, templateUpdates, false, pkgbuildParser, env);
         const finalData = await parse(pkgbuildPath, pkgbuildParser);
         const localData = versionStore.get(pkg.pkgname);
-        const changed = pkgbuildModified || pacmanVersionChanged(localData, finalData);
+        const versionChanged = pacmanVersionChanged(localData, finalData);
         let missingRepoArtifact = false;
 
-        if (!changed) {
+        if (!versionChanged) {
             if (repo) {
                 const alreadyBuilt = await hasBuilt(repo, pkg.pkgname, finalData, baseDir);
                 if (alreadyBuilt) {
@@ -149,9 +149,7 @@ export async function runPackageVersionCheck(
         }
 
         if (hasPacmanVersion(localData)) {
-            if (changed) {
-                console.debug(`  [debug] [Check] localData: ${JSON.stringify(localData)}`);
-                console.debug(`  [debug] [Check] finalData: ${JSON.stringify(finalData)}`);
+            if (versionChanged) {
                 console.log(`[Check] Update detected for ${pkg.pkgname}: ${formatPacmanVersion(localData)} -> ${formatPacmanVersion(finalData)}`);
             } else if (missingRepoArtifact) {
                 console.log(`[Check] Rebuild required for ${pkg.pkgname}: repo artifact missing for ${formatPacmanVersion(finalData)}.`);

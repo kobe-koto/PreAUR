@@ -67,6 +67,22 @@ describe('runPackageVersionCheck', () => {
         expect(result.skippedPackages.map(item => item.pkg.pkgname)).toEqual(['demo']);
     });
 
+    test('does not schedule builds only because PKGBUILD content was rewritten', async () => {
+        const baseDir = await makeBaseDir();
+        const store = new VersionStore(baseDir);
+        await store.load();
+        store.set('demo', { pkgver: '1.0.0', pkgrel: 1 });
+
+        const packages: PreaurPackage[] = [{ pkgname: 'demo', maintainer: 'preaur-owner' }];
+        const result = await runPackageVersionCheck(packages, store, {
+            baseDir,
+            deps: makeDeps({ pkgver: '1.0.0', pkgrel: 1 }, true),
+        });
+
+        expect(result.buildPlans).toEqual([]);
+        expect(result.skippedPackages.map(item => item.reason)).toEqual(['version unchanged (1.0.0-1)']);
+    });
+
     test('skips unchanged packages only when the repo artifact already exists', async () => {
         const baseDir = await makeBaseDir();
         const store = new VersionStore(baseDir);
