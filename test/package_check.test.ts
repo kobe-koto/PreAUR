@@ -187,10 +187,19 @@ describe('runPackageVersionCheck', () => {
             LOGDEST: path.join(baseDir, 'work', 'demo', 'logdest'),
             BUILDDIR: path.join(baseDir, 'work', 'demo', 'builddir'),
             PKGDEST: path.join(baseDir, 'work', 'demo', 'pkgdest'),
+            MAKEPKG_CONF: path.join(baseDir, 'work', 'demo', 'makepkg.conf'),
         });
         expect(updateEnv).toEqual(dynamicEnv);
         expect(result.buildPlans[0]?.workDirs.pkgdest).toBe(path.join(baseDir, 'work', 'demo', 'pkgdest'));
         expect(result.buildPlans[0]?.env).toEqual(dynamicEnv);
+
+        const makepkgConf = await fs.readFile(path.join(baseDir, 'work', 'demo', 'makepkg.conf'), 'utf8');
+        expect(makepkgConf).toContain(`SRCDEST='${path.join(baseDir, 'work', 'demo', 'srcdest')}'`);
+        expect(makepkgConf).toContain(`LOGDEST='${path.join(baseDir, 'work', 'demo', 'logdest')}'`);
+        expect(makepkgConf).toContain(`BUILDDIR='${path.join(baseDir, 'work', 'demo', 'builddir')}'`);
+        expect(makepkgConf).toContain(`PKGDEST='${path.join(baseDir, 'work', 'demo', 'pkgdest')}'`);
+
+        await expect(fs.stat(path.join(baseDir, 'work', 'demo', 'logdest'))).rejects.toThrow();
     });
 
     test('uses session package log directory for LOGDEST when provided', async () => {

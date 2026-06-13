@@ -3,6 +3,12 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as fs from 'node:fs';
 import type { PreaurResources } from './config';
+import { writeMakepkgConfig } from './workdirs';
+
+const DEVTOOLS_IGNORED_ENV_KEYS = new Set([
+    'BUILDDIR',
+    'COMPRESSZST',
+]);
 
 export function calculateNproc(cpuConfig?: string): number {
     if (!cpuConfig) return Math.max(1, os.cpus().length - 1); // default -1
@@ -34,6 +40,88 @@ export interface BuildOptions {
     env?: Record<string, string>;
 }
 
+export interface BuildCommandPlan {
+    cmd: string;
+    args: string[];
+    isDevtoolsBuild: boolean;
+}
+
+export function buildCommandPlan(
+    builder: string,
+    opts: {
+        dummyPkgs?: string[];
+        chrootWorker?: string;
+    } = {}
+): BuildCommandPlan {
+    const [cmd, ...args] = builder.split(' ');
+
+    if (!cmd) {
+        throw new Error('Invalid builder command');
+    }
+
+    const isDevtoolsBuild = cmd.endsWith('-build');
+    const makechrootpkgArgs: string[] = [];
+
+    // Assign a unique chroot copy name so parallel builds don't block each other.
+    if (opts.chrootWorker && isDevtoolsBuild) {
+        makechrootpkgArgs.push('-l', opts.chrootWorker);
+    }
+
+    // Inject dummy/repo dependency packages via -I.
+    if (opts.dummyPkgs && opts.dummyPkgs.length > 0) {
+        if (isDevtoolsBuild) {
+            for (const p of opts.dummyPkgs) {
+                makechrootpkgArgs.push('-I', p);
+            }
+        } else {
+            for (const p of opts.dummyPkgs) {
+                args.push('-I', p);
+            }
+        }
+    }
+
+    // Devtools *-build wrappers pass arguments after -- to makechrootpkg.
+    if (isDevtoolsBuild && makechrootpkgArgs.length > 0) {
+        args.push('--', ...makechrootpkgArgs);
+    }
+
+    return { cmd, args, isDevtoolsBuild };
+}
+
+export function buildProcessEnv(
+    baseEnv: Record<string, string | undefined>,
+    extraEnv: Record<string, string> | undefined,
+    opts: {
+        nproc: number;
+        packager?: string;
+        devtoolsBuild?: boolean;
+    }
+): Record<string, string> {
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(baseEnv)) {
+        if (value !== undefined) env[key] = value;
+    }
+
+    for (const [key, value] of Object.entries(extraEnv ?? {})) {
+        if (opts.devtoolsBuild && DEVTOOLS_IGNORED_ENV_KEYS.has(key)) continue;
+        env[key] = value;
+    }
+
+    env.MAKEFLAGS = `-j${opts.nproc}`;
+
+    if (opts.devtoolsBuild) {
+        env.NPROC = String(opts.nproc);
+    } else {
+        env.COMPRESSZST = `zstd -c -T${opts.nproc} -`;
+    }
+
+    if (opts.packager) {
+        env.PACKAGER = opts.packager;
+    }
+
+    return env;
+}
+
 export async function buildPackage(opts: BuildOptions): Promise<void> {
     const {
         pkgDir,
@@ -51,53 +139,27 @@ export async function buildPackage(opts: BuildOptions): Promise<void> {
     const workerInfo = chrootWorker ? ` chroot=[${chrootWorker}]` : '';
     console.log(`[Builder] Starting build for ${path.basename(pkgDir)} using ${builder} with MAKEFLAGS="-j${nproc}"${workerInfo}`);
 
+    const buildPlan = buildCommandPlan(builder, { dummyPkgs, chrootWorker });
+    const { cmd, args, isDevtoolsBuild } = buildPlan;
+
+    if (extraEnv?.MAKEPKG_CONF && extraEnv.SRCDEST && extraEnv.LOGDEST && extraEnv.BUILDDIR && extraEnv.PKGDEST) {
+        await writeMakepkgConfig(extraEnv.MAKEPKG_CONF, {
+            srcdest: extraEnv.SRCDEST,
+            logdest: extraEnv.LOGDEST,
+            builddir: extraEnv.BUILDDIR,
+            pkgdest: extraEnv.PKGDEST,
+            makeflags: `-j${nproc}`,
+            compressZstdThreads: nproc,
+            packager,
+        });
+    }
+
     return new Promise((resolve, reject) => {
-        // Determine the command and arguments. `extra-x86_64-build` usually takes no required args
-        // but relies on being in the correct directory.
-        const [cmd, ...args] = builder.split(' ');
-
-        if (!cmd) {
-            reject(new Error('Invalid builder command'));
-            return;
-        }
-
-        // For devtools *-build commands, extra arguments are passed to makechrootpkg
-        // via `-- <makechrootpkg_args>`. We need to collect those separately.
-        const isDevtoolsBuild = cmd.endsWith('-build');
-        const makechrootpkgArgs: string[] = [];
-
-        // Assign a unique chroot copy name so parallel builds don't block each other
-        if (chrootWorker && isDevtoolsBuild) {
-            makechrootpkgArgs.push('-l', chrootWorker);
-        }
-
-        // Inject dummy/repo dependency packages via -I
-        if (dummyPkgs && dummyPkgs.length > 0) {
-            for (const p of dummyPkgs) {
-                makechrootpkgArgs.push('-I', p);
-            }
-        }
-
-        // Append the `--` separator and makechrootpkg args if needed
-        if (isDevtoolsBuild && makechrootpkgArgs.length > 0) {
-            args.push('--', ...makechrootpkgArgs);
-        } else if (!isDevtoolsBuild && dummyPkgs && dummyPkgs.length > 0) {
-            // Non-devtools builder: just pass -I directly
-            for (const p of dummyPkgs) {
-                args.push('-I', p);
-            }
-        }
-
-        const env: Record<string, string> = {
-            ...process.env as Record<string, string>,
-            ...extraEnv,
-            MAKEFLAGS: `-j${nproc}`,
-            COMPRESSZST: `zstd -c -T${nproc} -`,
-        };
-
-        if (packager) {
-            env.PACKAGER = packager;
-        }
+        const env = buildProcessEnv(process.env, extraEnv, {
+            nproc,
+            packager,
+            devtoolsBuild: isDevtoolsBuild,
+        });
 
         const buildProcess = spawn(cmd, args, {
             cwd: pkgDir,

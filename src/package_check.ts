@@ -8,7 +8,7 @@ import { preparePackageDiff, type GitCloneResult } from './git';
 import { parsePkgBuild, updateDynamicPkgver, updatePkgBuild, type PkgBuildData, type PkgBuildParser } from './pkgbuild';
 import { VersionStore } from './version_store';
 import { hasBuiltPackage } from './repo';
-import { ensurePackageCheckWorkDirs, getPackageWorkDirs, packageWorkEnv, type PackageWorkDirs } from './workdirs';
+import { ensurePackageCheckWorkDirs, getPackageWorkDirs, packageWorkEnv, writePackageMakepkgConfig, type PackageWorkDirs } from './workdirs';
 import { formatPacmanVersion, hasPacmanVersion, pacmanVersionChanged } from './pacman_version';
 
 export interface PackageBuildPlan {
@@ -93,6 +93,7 @@ export async function runPackageVersionCheck(
             sessionLogDir ? path.resolve(sessionLogDir, pkg.pkgname) : undefined
         );
         await ensurePackageCheckWorkDirs(workDirs);
+        await writePackageMakepkgConfig(workDirs);
         const env = packageWorkEnv(workDirs);
 
         const { path: pkgDir, git }: GitCloneResult = await prepare(
@@ -119,7 +120,7 @@ export async function runPackageVersionCheck(
 
         const builderType = pkg.builder || 'extra-x86_64-build';
         const pkgbuildModified = await updatePkg(pkgbuildPath, templateUpdates, false, pkgbuildParser, env);
-        const finalData = await parse(pkgbuildPath, pkgbuildParser);
+        const finalData = await parse(pkgbuildPath, pkgbuildParser, env);
         const localData = versionStore.get(pkg.pkgname);
         const versionChanged = pacmanVersionChanged(localData, finalData);
         let missingRepoArtifact = false;

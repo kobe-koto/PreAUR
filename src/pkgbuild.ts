@@ -77,9 +77,13 @@ async function parsePkgBuildNative(pkgbuildPath: string): Promise<PkgBuildData> 
     return { epoch, pkgver, pkgrel };
 }
 
-async function parsePkgBuildMakepkg(pkgbuildPath: string): Promise<PkgBuildData> {
+async function parsePkgBuildMakepkg(pkgbuildPath: string, env?: CommandEnv): Promise<PkgBuildData> {
     const pkgbuildDir = path.dirname(pkgbuildPath);
-    const { stdout } = await execAsync('makepkg --printsrcinfo', { cwd: pkgbuildDir });
+    const configArg = env?.MAKEPKG_CONF ? `--config ${shellQuote(env.MAKEPKG_CONF)} ` : '';
+    const { stdout } = await execAsync(`makepkg ${configArg}--printsrcinfo`, {
+        cwd: pkgbuildDir,
+        env: env ? { ...process.env, ...env } : process.env,
+    });
 
     const fields: Record<string, string> = {};
     for (const line of stdout.split('\n')) {
@@ -106,9 +110,9 @@ async function parsePkgBuildMakepkg(pkgbuildPath: string): Promise<PkgBuildData>
     return { epoch, pkgver: fields.pkgver, pkgrel };
 }
 
-export async function parsePkgBuild(pkgbuildPath: string, parser: PkgBuildParser = 'native'): Promise<PkgBuildData> {
+export async function parsePkgBuild(pkgbuildPath: string, parser: PkgBuildParser = 'native', env?: CommandEnv): Promise<PkgBuildData> {
     return parser === 'makepkg'
-        ? parsePkgBuildMakepkg(pkgbuildPath)
+        ? parsePkgBuildMakepkg(pkgbuildPath, env)
         : parsePkgBuildNative(pkgbuildPath);
 }
 
@@ -125,7 +129,8 @@ export async function updateDynamicPkgver(pkgbuildPath: string, env?: CommandEnv
         // -o: extract and download sources
         // -d: skip dependency checks
         // -c: clean up working directory after
-        await execAsync('makepkg -odc --noconfirm --skipinteg', {
+        const configArg = env?.MAKEPKG_CONF ? `--config ${shellQuote(env.MAKEPKG_CONF)} ` : '';
+        await execAsync(`makepkg ${configArg}-odc --noconfirm --skipinteg`, {
             cwd: pkgbuildDir,
             env: env ? { ...process.env, ...env } : process.env,
         });
@@ -146,7 +151,7 @@ export async function updatePkgBuild(
     let content = await fs.readFile(pkgbuildPath, 'utf8');
     const originalContent = content;
 
-    const currentData = await parsePkgBuild(pkgbuildPath, parser);
+    const currentData = await parsePkgBuild(pkgbuildPath, parser, env);
 
     if (updates.pkgver && currentData.pkgver !== updates.pkgver) {
         console.log(`[PKGBUILD] Updating pkgver from ${currentData.pkgver} to ${updates.pkgver} (pkgrel=1)`);
