@@ -2,15 +2,12 @@ import * as fs from 'node:fs/promises';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
+import type { PacmanVersion } from './pacman_version';
 
 const execAsync = promisify(exec);
 type CommandEnv = Record<string, string>;
 
-export interface PkgBuildData {
-    epoch?: string;
-    pkgver: string;
-    pkgrel: number;
-}
+export type PkgBuildData = PacmanVersion;
 
 export type PkgBuildParser = 'native' | 'makepkg';
 
@@ -52,18 +49,17 @@ async function parsePkgBuildNative(pkgbuildPath: string): Promise<PkgBuildData> 
 
     let pkgver = stripQuotes(pkgverMatch[1]);
     let pkgrelRaw = stripQuotes(pkgrelMatch[1]);
-    let epoch = epochMatch && epochMatch[1] ? stripQuotes(epochMatch[1]) : undefined;
+    let epochRaw = epochMatch && epochMatch[1] ? stripQuotes(epochMatch[1]) : '0';
 
     // The regex captures the raw assignment text. If any version field relies on
     // bash variables / parameter expansion (no pkgver() to let makepkg rewrite it),
     // the literal expression leaks through — resolve it by sourcing the PKGBUILD.
-    if (pkgver.includes('$') || pkgrelRaw.includes('$') || (epoch?.includes('$'))) {
+    if (pkgver.includes('$') || pkgrelRaw.includes('$') || epochRaw.includes('$')) {
         try {
             const resolved = await evalPkgBuildVars(pkgbuildPath);
             if (resolved.pkgver) pkgver = resolved.pkgver;
             if (resolved.pkgrel) pkgrelRaw = resolved.pkgrel;
-            // epoch may legitimately resolve to empty (unset) — trust the shell.
-            epoch = resolved.epoch;
+            epochRaw = resolved.epoch ?? '0';
         } catch (e: any) {
             console.warn(`[PKGBUILD] Failed to resolve bash-expanded version fields via sourcing: ${e.message}`);
         }
@@ -72,6 +68,10 @@ async function parsePkgBuildNative(pkgbuildPath: string): Promise<PkgBuildData> 
     const pkgrel = parseInt(pkgrelRaw, 10);
     if (isNaN(pkgrel)) {
         throw new Error(`Could not parse pkgrel from PKGBUILD (got "${pkgrelRaw}")`);
+    }
+    const epoch = parseInt(epochRaw || '0', 10);
+    if (isNaN(epoch) || epoch < 0) {
+        throw new Error(`Could not parse epoch from PKGBUILD (got "${epochRaw}")`);
     }
 
     return { epoch, pkgver, pkgrel };
@@ -98,7 +98,12 @@ async function parsePkgBuildMakepkg(pkgbuildPath: string): Promise<PkgBuildData>
         throw new Error(`Could not parse pkgrel from makepkg --printsrcinfo (got "${fields.pkgrel}")`);
     }
 
-    return { epoch: fields.epoch, pkgver: fields.pkgver, pkgrel };
+    const epoch = fields.epoch ? parseInt(fields.epoch, 10) : 0;
+    if (isNaN(epoch) || epoch < 0) {
+        throw new Error(`Could not parse epoch from makepkg --printsrcinfo (got "${fields.epoch}")`);
+    }
+
+    return { epoch, pkgver: fields.pkgver, pkgrel };
 }
 
 export async function parsePkgBuild(pkgbuildPath: string, parser: PkgBuildParser = 'native'): Promise<PkgBuildData> {

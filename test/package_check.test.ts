@@ -22,7 +22,7 @@ afterEach(async () => {
     }
 });
 
-function makeDeps(finalData: { epoch?: string; pkgver: string; pkgrel: number }, changed = false): PackageVersionCheckDeps {
+function makeDeps(finalData: { epoch?: number; pkgver: string; pkgrel: number }, changed = false): PackageVersionCheckDeps {
     return {
         preparePackageDiff: async (pkgname) => ({
             path: `/tmp/preaur-test/${pkgname}`,
@@ -30,7 +30,7 @@ function makeDeps(finalData: { epoch?: string; pkgver: string; pkgrel: number },
         }),
         updateDynamicPkgver: async () => false,
         updatePkgBuild: async () => changed,
-        parsePkgBuild: async () => finalData,
+        parsePkgBuild: async () => ({ epoch: finalData.epoch ?? 0, pkgver: finalData.pkgver, pkgrel: finalData.pkgrel }),
     };
 }
 

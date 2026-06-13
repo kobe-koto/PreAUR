@@ -9,6 +9,7 @@ import { parsePkgBuild, updateDynamicPkgver, updatePkgBuild, type PkgBuildData, 
 import { VersionStore } from './version_store';
 import { hasBuiltPackage } from './repo';
 import { ensurePackageWorkDirs, getPackageWorkDirs, packageWorkEnv, type PackageWorkDirs } from './workdirs';
+import { formatPacmanVersion, hasPacmanVersion, pacmanVersionChanged } from './pacman_version';
 
 export interface PackageBuildPlan {
     pkg: PreaurPackage;
@@ -33,27 +34,6 @@ export interface PackageVersionCheckDeps {
     updateDynamicPkgver?: typeof updateDynamicPkgver;
     updatePkgBuild?: typeof updatePkgBuild;
     hasBuiltPackage?: typeof hasBuiltPackage;
-}
-
-function hasStoredVersion(info: ReturnType<VersionStore['get']>): boolean {
-    return !!info?.pkgver && info.pkgrel !== undefined;
-}
-
-function versionChanged(current: ReturnType<VersionStore['get']>, next: PkgBuildData): boolean {
-    if (!hasStoredVersion(current)) return true;
-
-    const stored = current!;
-    return next.epoch !== stored.epoch
-        || next.pkgver !== stored.pkgver
-        || next.pkgrel !== stored.pkgrel;
-}
-
-function formatVersion(data: { epoch?: string; pkgver: string; pkgrel: number }): string {
-    return `${data.epoch ? `${data.epoch}:` : ''}${data.pkgver}-${data.pkgrel}`;
-}
-
-function formatStoredVersion(data: NonNullable<ReturnType<VersionStore['get']>>): string {
-    return `${data.epoch ? `${data.epoch}:` : ''}${data.pkgver!}-${data.pkgrel!}`;
 }
 
 function resolveTemplateUpdates(pkg: PreaurPackage, checkerRes: CheckerResult): Record<string, string> {
@@ -141,41 +121,43 @@ export async function runPackageVersionCheck(
         const pkgbuildModified = await updatePkg(pkgbuildPath, templateUpdates, false, pkgbuildParser, env);
         const finalData = await parse(pkgbuildPath, pkgbuildParser);
         const localData = versionStore.get(pkg.pkgname);
-        const changed = pkgbuildModified || versionChanged(localData, finalData);
+        const changed = pkgbuildModified || pacmanVersionChanged(localData, finalData);
         let missingRepoArtifact = false;
 
         if (!changed) {
             if (repo) {
-                const alreadyBuilt = await hasBuilt(repo, pkg.pkgname, finalData.pkgver, finalData.pkgrel, baseDir);
+                const alreadyBuilt = await hasBuilt(repo, pkg.pkgname, finalData, baseDir);
                 if (alreadyBuilt) {
                     skippedPackages.push({
                         pkg,
-                        reason: `version unchanged and artifact already exists (${formatVersion(finalData)})`,
+                        reason: `version unchanged and artifact already exists (${formatPacmanVersion(finalData)})`,
                     });
-                    console.log(`[Check] Skipping ${pkg.pkgname}: version unchanged and artifact already exists (${formatVersion(finalData)}).`);
+                    console.log(`[Check] Skipping ${pkg.pkgname}: version unchanged and artifact already exists (${formatPacmanVersion(finalData)}).`);
                     continue;
                 }
 
-                console.log(`[Check] ${pkg.pkgname} version is unchanged (${formatVersion(finalData)}), but no matching repo artifact exists; scheduling build.`);
+                console.log(`[Check] ${pkg.pkgname} version is unchanged (${formatPacmanVersion(finalData)}), but no matching repo artifact exists; scheduling build.`);
                 missingRepoArtifact = true;
             } else {
                 skippedPackages.push({
                     pkg,
-                    reason: `version unchanged (${formatVersion(finalData)})`,
+                    reason: `version unchanged (${formatPacmanVersion(finalData)})`,
                 });
-                console.log(`[Check] Skipping ${pkg.pkgname}: version unchanged (${formatVersion(finalData)}).`);
+                console.log(`[Check] Skipping ${pkg.pkgname}: version unchanged (${formatPacmanVersion(finalData)}).`);
                 continue;
             }
         }
 
-        if (hasStoredVersion(localData)) {
+        if (hasPacmanVersion(localData)) {
             if (changed) {
-                console.log(`[Check] Update detected for ${pkg.pkgname}: ${formatStoredVersion(localData!)} -> ${formatVersion(finalData)}`);
+                console.debug(`  [debug] [Check] localData: ${JSON.stringify(localData)}`);
+                console.debug(`  [debug] [Check] finalData: ${JSON.stringify(finalData)}`);
+                console.log(`[Check] Update detected for ${pkg.pkgname}: ${formatPacmanVersion(localData)} -> ${formatPacmanVersion(finalData)}`);
             } else if (missingRepoArtifact) {
-                console.log(`[Check] Rebuild required for ${pkg.pkgname}: repo artifact missing for ${formatVersion(finalData)}.`);
+                console.log(`[Check] Rebuild required for ${pkg.pkgname}: repo artifact missing for ${formatPacmanVersion(finalData)}.`);
             }
         } else {
-            console.log(`[Check] No stored successful build version for ${pkg.pkgname}; scheduling build for ${formatVersion(finalData)}.`);
+            console.log(`[Check] No stored successful build version for ${pkg.pkgname}; scheduling build for ${formatPacmanVersion(finalData)}.`);
         }
 
         buildPlans.push({

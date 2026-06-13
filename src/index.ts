@@ -119,7 +119,7 @@ program
                     try {
                         let shouldBuild = true;
                         if (config.repo) {
-                            const alreadyBuilt = await hasBuiltPackage(config.repo, pkg.pkgname, finalData.pkgver, finalData.pkgrel, process.cwd());
+                            const alreadyBuilt = await hasBuiltPackage(config.repo, pkg.pkgname, finalData, process.cwd());
                             if (alreadyBuilt) {
                                 console.log(`[Preaur] Package ${pkg.pkgname}-${finalData.pkgver}-${finalData.pkgrel} already exists in repo. Skipping build.`);
                                 shouldBuild = false;

@@ -3,18 +3,19 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import type { PreaurRepo } from './config';
+import type { PacmanVersion } from './pacman_version';
+import { packageArtifactPrefix } from './pacman_version';
 
 export async function hasBuiltPackage(
     repoConfig: PreaurRepo,
     pkgname: string,
-    pkgver: string,
-    pkgrel: number,
+    version: PacmanVersion,
     baseDir: string = process.cwd()
 ): Promise<boolean> {
     const repoDir = path.resolve(baseDir, 'repo', repoConfig.name);
     try {
         const files = await fs.readdir(repoDir);
-        const prefix = `${pkgname}-${pkgver}-${pkgrel}-`;
+        const prefix = packageArtifactPrefix(pkgname, version);
         return files.some(f => f.startsWith(prefix) && f.endsWith('.pkg.tar.zst'));
     } catch (e: any) {
         if (e.code === 'ENOENT') {

@@ -27,7 +27,7 @@ describe('parsePkgBuild', () => {
         const p = await writePkgBuild(
             `pkgname=foo\npkgver=1.2.3\npkgrel=2\n`
         );
-        expect(await parsePkgBuild(p)).toEqual({ epoch: undefined, pkgver: '1.2.3', pkgrel: 2 });
+        expect(await parsePkgBuild(p)).toEqual({ epoch: 0, pkgver: '1.2.3', pkgrel: 2 });
     });
 
     test('strips surrounding quotes from pkgver', async () => {
@@ -41,7 +41,7 @@ describe('parsePkgBuild', () => {
         const p = await writePkgBuild(
             `pkgname=foo\nepoch=2\npkgver=1.0\npkgrel=1\n`
         );
-        expect(await parsePkgBuild(p)).toEqual({ epoch: '2', pkgver: '1.0', pkgrel: 1 });
+        expect(await parsePkgBuild(p)).toEqual({ epoch: 2, pkgver: '1.0', pkgrel: 1 });
     });
 
     // Regression: a version built through multiple levels of bash variable
@@ -58,7 +58,7 @@ describe('parsePkgBuild', () => {
                 '',
             ].join('\n')
         );
-        expect(await parsePkgBuild(p)).toEqual({ epoch: undefined, pkgver: '1.4.2_rc_7', pkgrel: 1 });
+        expect(await parsePkgBuild(p)).toEqual({ epoch: 0, pkgver: '1.4.2_rc_7', pkgrel: 1 });
     });
 
     test('actually applies parameter expansion (hyphen -> underscore)', async () => {
@@ -80,7 +80,7 @@ describe('parsePkgBuild', () => {
                 '',
             ].join('\n')
         );
-        expect(await parsePkgBuild(p)).toEqual({ epoch: '1', pkgver: '1.0', pkgrel: 4 });
+        expect(await parsePkgBuild(p)).toEqual({ epoch: 1, pkgver: '1.0', pkgrel: 4 });
     });
 
     test('throws when pkgver is missing', async () => {

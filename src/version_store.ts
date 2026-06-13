@@ -1,10 +1,8 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import type { PartialPacmanVersion } from './pacman_version';
 
-export interface VersionInfo {
-    epoch?: string;
-    pkgver?: string;
-    pkgrel?: number;
+export interface VersionInfo extends PartialPacmanVersion {
     source?: 'aur' | 'custom_git';
     aur_pkgname?: string;
     maintainer?: string | null;
