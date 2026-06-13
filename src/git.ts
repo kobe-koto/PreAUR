@@ -31,14 +31,14 @@ export async function preparePackageDiff(
     const git = simpleGit();
 
     if (exists) {
-        console.log(`[Git] Fetching, resetting, and cleaning ${pkgname}...`);
+        console.log(`[Git] [${pkgname}] Fetching, resetting, and cleaning...`);
         const repoGit = simpleGit(pkgDir);
         await repoGit.fetch();
         await repoGit.reset(['--hard', '@{u}']);
         await repoGit.raw(['clean', '-dff']);
         return { path: pkgDir, git: repoGit };
     } else {
-        console.log(`[Git] Cloning ${pkgname} from ${gitUrl}...`);
+        console.log(`[Git] [${pkgname}] Cloning from ${gitUrl}...`);
         await git.clone(gitUrl, pkgDir);
         return { path: pkgDir, git: simpleGit(pkgDir) };
     }
@@ -53,18 +53,18 @@ export async function commitAndPush(
     const status = await git.status();
 
     if (status.files.length === 0) {
-        console.log(`[Git] No changes to commit for ${pkgname}.`);
+        console.log(`[Git] [${pkgname}] No changes to commit.`);
         return;
     }
 
-    console.log(`[Git] Committing changes for ${pkgname} (v${newVersion})...`);
+    console.log(`[Git] [${pkgname}] Committing changes (v${newVersion})...`);
     await git.add('.');
     await git.commit(`upgpkg: ${pkgname} ${newVersion}`);
 
     if (enablePush) {
-        console.log(`[Git] Pushing changes to AUR for ${pkgname}...`);
+        console.log(`[Git] [${pkgname}] Pushing changes to AUR...`);
         await git.push();
     } else {
-        console.log(`[Git] Push is disabled for ${pkgname}, skipping push.`);
+        console.log(`[Git] [${pkgname}] Push is disabled, skipping push.`);
     }
 }
