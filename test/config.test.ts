@@ -103,4 +103,25 @@ packages:
             lines: ['Server = file:///srv/repo/$arch'],
         });
     });
+
+    test('accepts package-level pre-build packages and scripts', async () => {
+        const configPath = await writeConfig(`
+maintainers:
+  - id: johndoe
+    name: John Doe
+    email: john@example.com
+default_maintainer: johndoe
+packages:
+  - pkgname: demo
+    pre-build-packages:
+      - custom-tool
+    pre-build-scripts:
+      - "echo preparing chroot"
+`);
+
+        const config = await loadConfig(configPath);
+
+        expect(config.packages[0]?.['pre-build-packages']).toEqual(['custom-tool']);
+        expect(config.packages[0]?.['pre-build-scripts']).toEqual(['echo preparing chroot']);
+    });
 });

@@ -8,6 +8,7 @@ import { loadConfig } from './config';
 import { commitAndPush } from './git';
 import { buildPackage } from './builder';
 import { createDummyPackages } from './dummy';
+import { createPreBuildPackage, packagePreBuildConfig } from './prebuild';
 import { manageRepository, hasBuiltPackage, resolveBuiltPackage } from './repo';
 import { initMainLogger, createTaskLogger, getSessionLogDir, getTaskLogPath, loggerContext, constructMessager } from './logger';
 import { Semaphore } from './semaphore';
@@ -160,6 +161,15 @@ program
                                 if (pkg.dummy_packages && pkg.dummy_packages.length > 0) {
                                     const dummyPkgs = await createDummyPackages(pkg.dummy_packages, loggerStream);
                                     extraPaths.push(...dummyPkgs);
+                                }
+
+                                const preBuildPkg = await createPreBuildPackage(
+                                    pkg.pkgname,
+                                    packagePreBuildConfig(pkg),
+                                    loggerStream
+                                );
+                                if (preBuildPkg) {
+                                    extraPaths.push(preBuildPkg);
                                 }
 
                                 // Execute build — acquire a chroot worker for unique copy name

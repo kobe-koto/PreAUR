@@ -88,6 +88,10 @@ export interface PreaurPackage {
     push?: boolean; // Optional, push on succeed
     dummy_packages?: PreaurDummyPackage[];
     repo_packages?: string[]; // Packages that must be built before this package
+    'pre-build-packages'?: string[];
+    'pre-build-scripts'?: string[];
+    pre_build_packages?: string[];
+    pre_build_scripts?: string[];
 }
 
 export interface PreaurConfig {
@@ -138,6 +142,10 @@ export async function loadConfig(configPath: string): Promise<PreaurConfig> {
             if (!maintainerIds.has(pkg.maintainer)) {
                 throw new Error(`Package ${pkg.pkgname} references unknown maintainer: ${pkg.maintainer}`);
             }
+            validateStringArray(pkg['pre-build-packages'], `Package ${pkg.pkgname} pre-build-packages`);
+            validateStringArray(pkg['pre-build-scripts'], `Package ${pkg.pkgname} pre-build-scripts`);
+            validateStringArray(pkg.pre_build_packages, `Package ${pkg.pkgname} pre_build_packages`);
+            validateStringArray(pkg.pre_build_scripts, `Package ${pkg.pkgname} pre_build_scripts`);
         }
 
         config.resources ??= {};
@@ -150,6 +158,15 @@ export async function loadConfig(configPath: string): Promise<PreaurConfig> {
     } catch (error: any) {
         throw new Error(`Failed to load config from ${configPath}: ${error.message}`);
     }
+}
+
+function validateStringArray(value: unknown, context: string): string[] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) {
+        throw new Error(`${context} must be an array of strings`);
+    }
+
+    return value;
 }
 
 function normalizeIncludePaths(paths: unknown, configDir: string, context: string): string[] | undefined {

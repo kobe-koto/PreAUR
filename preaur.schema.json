@@ -235,6 +235,30 @@
                 "pkgname": {
                     "type": "string"
                 },
+                "pre-build-packages": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "pre-build-scripts": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "pre_build_packages": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "pre_build_scripts": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
                 "push": {
                     "type": "boolean"
                 },

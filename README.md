@@ -59,6 +59,18 @@ config:
           - "Server = file:///home/preaur/repo/$arch"
 ```
 
+Packages can also request package-level pre-build setup inside the chroot. `pre-build-packages` are installed before the package build starts, and `pre-build-scripts` run as root in the chroot before the package build starts:
+
+```yaml
+packages:
+  - pkgname: "demo"
+    pre-build-packages:
+      - "custom-tool"
+    pre-build-scripts:
+      - |
+        install -Dm644 /dev/null /etc/demo-prebuild-marker
+```
+
 #### GitHub Provider Authentication
 If you heavily use the `github` checker type, fetching data can be throttled. 
 
