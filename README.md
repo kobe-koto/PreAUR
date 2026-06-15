@@ -69,14 +69,25 @@ bun run src/index.ts -c custom.config.yaml
 
 PreAUR is designed with headless in mind.
 
-### Configure Passwordless Sudo
-Builders like `extra-x86_64-build` invoke `sudo` internally to spawn clean chroots. To prevent `preaur` from hanging while waiting for a password in a background task, you must allow your user to execute the build scripts without a password.
+### Create group preaur-build
 
-Run `sudo visudo` and append your privileges. If your user is under the `wheel` group natively, you can whitelist the builder executables specifically for your user:
+```bash
+groupadd preaur-build
+```
+
+### Configure Passwordless Sudo for group `preaur-build`
+
+Run `sudo visudo` and append your privileges:
 
 ```sudoers
-# Replace 'preaur' with your linux username if not
-preaur ALL=(ALL) NOPASSWD: /usr/bin/extra-x86_64-build, /usr/bin/multilib-build, /usr/bin/pkgctl
+Defaults:%preaur-build env_keep += "SOURCE_DATE_EPOCH SRCDEST SRCPKGDEST PKGDEST LOGDEST NPROC MAKEFLAGS PACKAGER GNUPGHOME BUILDTOOL"
+%preaur-build ALL=(ALL) NOPASSWD: /usr/bin/extra-x86_64-build, /usr/bin/multilib-build, /usr/bin/pkgctl
+```
+
+### Create user for PreAUR
+
+```bash
+useradd -m -G preaur-build preaur
 ```
 
 ### Set Up the Scheduler
