@@ -72,7 +72,7 @@ export function buildCommandPlan(
     }
 
     if (opts.chrootPacmanConfig && isDevtoolsBuild) {
-        makechrootpkgArgs.push('-D', `${opts.chrootPacmanConfig}:/etc/pacman.conf`);
+        makechrootpkgArgs.push('-u', '-D', `${opts.chrootPacmanConfig}:/etc/pacman.conf`);
     }
 
     // Inject dummy/repo dependency packages via -I.

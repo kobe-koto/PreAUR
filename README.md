@@ -59,6 +59,8 @@ config:
           - "Server = file:///home/preaur/repo/$arch"
 ```
 
+When `chrootPacman` is configured, PreAUR also asks `makechrootpkg` to update the working chroot copy so custom repository databases are synced before dependency installation.
+
 Packages can also request package-level pre-build setup inside the chroot. `pre-build-packages` are installed before the package build starts, and `pre-build-scripts` run as root in the chroot before the package build starts:
 
 ```yaml

@@ -13,7 +13,7 @@ describe('buildCommandPlan', () => {
 
         expect(plan).toEqual({
             cmd: 'extra-x86_64-build',
-            args: ['--', '-l', 'preaur-0', '-D', '/tmp/preaur-pacman.conf:/etc/pacman.conf', '-I', '/tmp/demo-dep.pkg.tar.zst'],
+            args: ['--', '-l', 'preaur-0', '-u', '-D', '/tmp/preaur-pacman.conf:/etc/pacman.conf', '-I', '/tmp/demo-dep.pkg.tar.zst'],
             isDevtoolsBuild: true,
         });
         expect(plan.args).not.toContain('-M');
