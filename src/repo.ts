@@ -6,6 +6,24 @@ import type { PreaurRepo } from './config';
 import type { PacmanVersion } from './pacman_version';
 import { packageArtifactPrefix } from './pacman_version';
 
+const PACKAGE_ARTIFACT_EXT = '.pkg.tar.zst';
+
+function parsePackageArtifactFile(file: string): { pkgname: string; pkgver: string; pkgrel: string; arch: string } | undefined {
+    if (!file.endsWith(PACKAGE_ARTIFACT_EXT)) return undefined;
+
+    const basename = file.slice(0, -PACKAGE_ARTIFACT_EXT.length);
+    const parts = basename.split('-');
+    if (parts.length < 4) return undefined;
+
+    const arch = parts.pop();
+    const pkgrel = parts.pop();
+    const pkgver = parts.pop();
+    const pkgname = parts.join('-');
+
+    if (!pkgname || !pkgver || !pkgrel || !arch) return undefined;
+    return { pkgname, pkgver, pkgrel, arch };
+}
+
 export async function hasBuiltPackage(
     repoConfig: PreaurRepo,
     pkgname: string,
@@ -33,13 +51,7 @@ export async function resolveBuiltPackage(
     const repoDir = path.resolve(baseDir, 'repo', repoConfig.name);
     try {
         const files = await fs.readdir(repoDir);
-        // Looking for the latest <pkgname>-<ver>-<rel>-<arch>.pkg.tar.zst 
-        // We can just rely on the prefix match and perhaps sort or just pick the first match 
-        // Usually the repo only has the latest one because we overwrite or clean, but if there's multiple
-        // we should grab the one that pacman would use. For simplicity, just finding one that starts with pkgname.
-        // However, pkgname might be "grub" and match "grub-theme". Thus we must match "^pkgname-[0-9]+".
-        const prefix = `${pkgname}-`;
-        const pkgFiles = files.filter(f => f.startsWith(prefix) && f.endsWith('.pkg.tar.zst'));
+        const pkgFiles = files.filter(f => parsePackageArtifactFile(f)?.pkgname === pkgname);
 
         if (pkgFiles.length === 0) {
             throw new Error(`Could not find built package for ${pkgname} in repository ${repoConfig.name}`);
