@@ -22,6 +22,20 @@ export interface PreaurRepo {
 export interface PreaurRuntimeConfig {
     pkgbuildParser?: PkgBuildParser;
     trustedAurGitPrefixes?: string[];
+    chrootPacman?: PreaurChrootPacmanConfig;
+}
+
+export interface PreaurChrootPacmanRepository {
+    name: string;
+    siglevel?: string | string[];
+    include?: string[];
+    lines?: string[];
+}
+
+export interface PreaurChrootPacmanConfig {
+    include?: string[];
+    lines?: string[];
+    repositories?: PreaurChrootPacmanRepository[];
 }
 
 export interface PreaurCheckerBase {
@@ -87,7 +101,9 @@ export interface PreaurConfig {
 
 export async function loadConfig(configPath: string): Promise<PreaurConfig> {
     try {
-        const fileContents = await readFile(path.resolve(configPath), 'utf8');
+        const resolvedConfigPath = path.resolve(configPath);
+        const configDir = path.dirname(resolvedConfigPath);
+        const fileContents = await readFile(resolvedConfigPath, 'utf8');
         const config = parse(fileContents);
 
         // Basic validation
@@ -104,6 +120,7 @@ export async function loadConfig(configPath: string): Promise<PreaurConfig> {
         if (config.config?.trustedAurGitPrefixes && !Array.isArray(config.config.trustedAurGitPrefixes)) {
             throw new Error('Config config.trustedAurGitPrefixes must be an array');
         }
+        normalizeChrootPacmanConfig(config.config?.chrootPacman, configDir);
 
         const maintainerIds = new Set(config.maintainers.map((m: PreaurMaintainer) => m.id));
         if (config.default_maintainer && !maintainerIds.has(config.default_maintainer)) {
@@ -132,5 +149,56 @@ export async function loadConfig(configPath: string): Promise<PreaurConfig> {
         return config as PreaurConfig;
     } catch (error: any) {
         throw new Error(`Failed to load config from ${configPath}: ${error.message}`);
+    }
+}
+
+function normalizeIncludePaths(paths: unknown, configDir: string, context: string): string[] | undefined {
+    if (paths === undefined) return undefined;
+    if (!Array.isArray(paths) || paths.some(item => typeof item !== 'string')) {
+        throw new Error(`Config ${context} must be an array of strings`);
+    }
+
+    return paths.map(item => path.isAbsolute(item) ? item : path.resolve(configDir, item));
+}
+
+function validateRawLines(lines: unknown, context: string): string[] | undefined {
+    if (lines === undefined) return undefined;
+    if (!Array.isArray(lines) || lines.some(item => typeof item !== 'string')) {
+        throw new Error(`Config ${context} must be an array of strings`);
+    }
+
+    return lines;
+}
+
+function normalizeChrootPacmanConfig(value: PreaurChrootPacmanConfig | undefined, configDir: string): void {
+    if (value === undefined) return;
+    if (typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('Config config.chrootPacman must be an object');
+    }
+
+    value.include = normalizeIncludePaths(value.include, configDir, 'config.chrootPacman.include');
+    value.lines = validateRawLines(value.lines, 'config.chrootPacman.lines');
+
+    if (value.repositories === undefined) return;
+    if (!Array.isArray(value.repositories)) {
+        throw new Error('Config config.chrootPacman.repositories must be an array');
+    }
+
+    for (const repo of value.repositories) {
+        if (!repo || typeof repo !== 'object' || Array.isArray(repo)) {
+            throw new Error('Config config.chrootPacman.repositories entries must be objects');
+        }
+        if (!repo.name || typeof repo.name !== 'string') {
+            throw new Error('Config config.chrootPacman.repositories[].name must be a string');
+        }
+        if (repo.siglevel !== undefined && typeof repo.siglevel !== 'string' && !Array.isArray(repo.siglevel)) {
+            throw new Error('Config config.chrootPacman.repositories[].siglevel must be a string or array of strings');
+        }
+        if (Array.isArray(repo.siglevel) && repo.siglevel.some(item => typeof item !== 'string')) {
+            throw new Error('Config config.chrootPacman.repositories[].siglevel must be a string or array of strings');
+        }
+
+        repo.include = normalizeIncludePaths(repo.include, configDir, `config.chrootPacman.repositories[${repo.name}].include`);
+        repo.lines = validateRawLines(repo.lines, `config.chrootPacman.repositories[${repo.name}].lines`);
     }
 }

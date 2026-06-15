@@ -8,11 +8,12 @@ describe('buildCommandPlan', () => {
         const plan = buildCommandPlan('extra-x86_64-build', {
             chrootWorker: 'preaur-0',
             dummyPkgs: ['/tmp/demo-dep.pkg.tar.zst'],
+            chrootPacmanConfig: '/tmp/preaur-pacman.conf',
         });
 
         expect(plan).toEqual({
             cmd: 'extra-x86_64-build',
-            args: ['--', '-l', 'preaur-0', '-I', '/tmp/demo-dep.pkg.tar.zst'],
+            args: ['--', '-l', 'preaur-0', '-D', '/tmp/preaur-pacman.conf:/etc/pacman.conf', '-I', '/tmp/demo-dep.pkg.tar.zst'],
             isDevtoolsBuild: true,
         });
         expect(plan.args).not.toContain('-M');
@@ -26,6 +27,18 @@ describe('buildCommandPlan', () => {
         expect(plan).toEqual({
             cmd: 'makepkg',
             args: ['--syncdeps', '-I', '/tmp/demo-dep.pkg.tar.zst'],
+            isDevtoolsBuild: false,
+        });
+    });
+
+    test('ignores chroot pacman config for non-devtools builders', () => {
+        const plan = buildCommandPlan('makepkg --syncdeps', {
+            chrootPacmanConfig: '/tmp/preaur-pacman.conf',
+        });
+
+        expect(plan).toEqual({
+            cmd: 'makepkg',
+            args: ['--syncdeps'],
             isDevtoolsBuild: false,
         });
     });

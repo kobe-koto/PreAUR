@@ -2,8 +2,9 @@ import { spawn } from 'node:child_process';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as fs from 'node:fs';
-import type { PreaurResources } from './config';
+import type { PreaurChrootPacmanConfig, PreaurResources } from './config';
 import { envAssignments, filterEnvPairs, mergeEnvPairs, type EnvPair, type EnvPairs } from './env';
+import { hasChrootPacmanConfig, writeChrootPacmanConfig } from './chroot_pacman';
 
 const DEVTOOLS_IGNORED_ENV_KEYS = new Set([
     'BUILDDIR',
@@ -38,6 +39,8 @@ export interface BuildOptions {
     chrootWorker?: string;
     packager?: string;
     env?: EnvPairs;
+    chrootPacman?: PreaurChrootPacmanConfig;
+    baseDir?: string;
 }
 
 export interface BuildCommandPlan {
@@ -51,6 +54,7 @@ export function buildCommandPlan(
     opts: {
         dummyPkgs?: string[];
         chrootWorker?: string;
+        chrootPacmanConfig?: string;
     } = {}
 ): BuildCommandPlan {
     const [cmd, ...args] = builder.split(' ');
@@ -65,6 +69,10 @@ export function buildCommandPlan(
     // Assign a unique chroot copy name so parallel builds don't block each other.
     if (opts.chrootWorker && isDevtoolsBuild) {
         makechrootpkgArgs.push('-l', opts.chrootWorker);
+    }
+
+    if (opts.chrootPacmanConfig && isDevtoolsBuild) {
+        makechrootpkgArgs.push('-D', `${opts.chrootPacmanConfig}:/etc/pacman.conf`);
     }
 
     // Inject dummy/repo dependency packages via -I.
@@ -127,6 +135,8 @@ export async function buildPackage(opts: BuildOptions): Promise<void> {
         chrootWorker,
         packager,
         env: extraEnv,
+        chrootPacman,
+        baseDir = process.cwd(),
     } = opts;
 
     const nproc = calculateNproc(resources?.cpu);
@@ -134,7 +144,16 @@ export async function buildPackage(opts: BuildOptions): Promise<void> {
     const workerInfo = chrootWorker ? ` chroot=[${chrootWorker}]` : '';
     console.log(`[Builder] Starting build for ${path.basename(pkgDir)} using ${builder} with MAKEFLAGS="-j${nproc}"${workerInfo}`);
 
-    const buildPlan = buildCommandPlan(builder, { dummyPkgs, chrootWorker });
+    const [builderCmd] = builder.split(' ');
+    const chrootPacmanConfig = builderCmd && builderCmd.endsWith('-build') && hasChrootPacmanConfig(chrootPacman)
+        ? await writeChrootPacmanConfig({
+            builderCmd,
+            config: chrootPacman!,
+            baseDir,
+        })
+        : undefined;
+
+    const buildPlan = buildCommandPlan(builder, { dummyPkgs, chrootWorker, chrootPacmanConfig });
     const { cmd, args, isDevtoolsBuild } = buildPlan;
 
     return new Promise((resolve, reject) => {

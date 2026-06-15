@@ -65,4 +65,42 @@ packages:
 
         await expect(loadConfig(configPath)).rejects.toThrow(/unknown maintainer/);
     });
+
+    test('resolves chroot pacman host include paths relative to config file', async () => {
+        const configPath = await writeConfig(`
+config:
+  chrootPacman:
+    include:
+      - pacman-global.conf
+    repositories:
+      - name: localrepo
+        siglevel:
+          - Optional
+          - TrustAll
+        include:
+          - pacman-localrepo.conf
+        lines:
+          - "Server = file:///srv/repo/$arch"
+maintainers:
+  - id: johndoe
+    name: John Doe
+    email: john@example.com
+default_maintainer: johndoe
+packages:
+  - pkgname: demo
+`);
+
+        const config = await loadConfig(configPath);
+        const configDir = path.dirname(configPath);
+
+        expect(config.config?.chrootPacman?.include).toEqual([
+            path.join(configDir, 'pacman-global.conf'),
+        ]);
+        expect(config.config?.chrootPacman?.repositories?.[0]).toMatchObject({
+            name: 'localrepo',
+            siglevel: ['Optional', 'TrustAll'],
+            include: [path.join(configDir, 'pacman-localrepo.conf')],
+            lines: ['Server = file:///srv/repo/$arch'],
+        });
+    });
 });

@@ -182,6 +182,8 @@ program
                                         chrootWorker,
                                         packager,
                                         env,
+                                        chrootPacman: config.config?.chrootPacman,
+                                        baseDir: process.cwd(),
                                     });
                                 } finally {
                                     if (chrootWorker) chrootPool.release(chrootWorker);

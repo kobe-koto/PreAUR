@@ -39,6 +39,26 @@ Ensure you copy this file to `preaur.config.yaml` before running the CLI:
 cp preaur.config.yaml.example preaur.config.yaml
 ```
 
+#### Chroot Pacman Repositories
+
+`config.chrootPacman` can add pacman configuration snippets to devtools chroot builds. PreAUR generates a pacman.conf from the selected devtools base config and binds it into the chroot as `/etc/pacman.conf`.
+
+Host include files are read by PreAUR and expanded into the generated chroot config:
+
+```yaml
+config:
+  chrootPacman:
+    include:
+      - ./pacman-extra-repos.conf
+    repositories:
+      - name: "myrepo"
+        siglevel: "Optional TrustAll"
+        include:
+          - ./pacman-myrepo.conf
+        lines:
+          - "Server = file:///home/preaur/repo/$arch"
+```
+
 #### GitHub Provider Authentication
 If you heavily use the `github` checker type, fetching data can be throttled. 
 
