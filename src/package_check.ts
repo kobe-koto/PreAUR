@@ -92,6 +92,7 @@ export async function runPackageVersionCheck(
             deps,
         }).then(result => {
             if ('skipped' in result && result.skipped && result.reason) {
+                console.log(UpdateCheckerMessager(`Package ${pkg.pkgname} skipped, reason: ${result.reason}`))
                 skippedPackages.push({ pkg, reason: result.reason});
             } else {
                 buildPlans.push(result as PackageBuildPlan);
