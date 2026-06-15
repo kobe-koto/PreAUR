@@ -115,8 +115,10 @@ useradd -m -G preaur-build preaur
    Description=Run PreAUR Daily
    
    [Timer]
-   OnCalendar=*-*-* 2:00:00 # daily, 2 a.m.
-   OnCalendar=*-*-* 13:00:00 # daily, 1 p.m.
+   # daily, 2 a.m.
+   OnCalendar=*-*-* 2:00:00
+   # daily, 1 p.m.
+   OnCalendar=*-*-* 13:00:00
    Persistent=true
    
    [Install]
