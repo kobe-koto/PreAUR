@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import { buildCommandPlan, buildProcessEnv } from '../src/builder';
+import { buildCommandPlan, buildProcessEnvPairs } from '../src/builder';
+import { envAssignments, envPairsToRecord } from '../src/env';
 
 describe('buildCommandPlan', () => {
     test('passes devtools options to makechrootpkg without unsupported makepkg config flags', () => {
@@ -30,51 +31,64 @@ describe('buildCommandPlan', () => {
     });
 });
 
-describe('buildProcessEnv', () => {
+describe('buildProcessEnvPairs', () => {
     test('keeps makepkg settings in env for non-devtools builders', () => {
-        const env = buildProcessEnv(
-            { PATH: '/usr/bin' },
-            {
-                SRCDEST: '/work/demo/srcdest',
-                LOGDEST: '/work/demo/logdest',
-                BUILDDIR: '/work/demo/builddir',
-                PKGDEST: '/work/demo/pkgdest',
-                MAKEPKG_CONF: '/work/demo/makepkg.conf',
-            },
+        const pairs = buildProcessEnvPairs(
+            [
+                ['SRCDEST', '/work/demo/srcdest'],
+                ['SRCPKGDEST', '/work/demo/srcpkgdest'],
+                ['LOGDEST', '/work/demo/logdest'],
+                ['BUILDDIR', '/work/demo/builddir'],
+                ['PKGDEST', '/work/demo/pkgdest'],
+            ],
             { nproc: 4, packager: 'PreAUR <preaur@example.test>', devtoolsBuild: false }
         );
+        const env = envPairsToRecord(pairs);
 
         expect(env.SRCDEST).toBe('/work/demo/srcdest');
-        expect(env.MAKEPKG_CONF).toBe('/work/demo/makepkg.conf');
+        expect(env.SRCPKGDEST).toBe('/work/demo/srcpkgdest');
         expect(env.MAKEFLAGS).toBe('-j4');
         expect(env.COMPRESSZST).toBe('zstd -c -T4 -');
         expect(env.PACKAGER).toBe('PreAUR <preaur@example.test>');
     });
 
     test('passes host-side package paths through devtools env', () => {
-        const env = buildProcessEnv(
-            { PATH: '/usr/bin' },
-            {
-                SRCDEST: '/work/demo/srcdest',
-                LOGDEST: '/work/demo/logdest',
-                BUILDDIR: '/work/demo/builddir',
-                PKGDEST: '/work/demo/pkgdest',
-                MAKEPKG_CONF: '/work/demo/makepkg.conf',
-                CUSTOM_FLAG: 'kept',
-            },
+        const pairs = buildProcessEnvPairs(
+            [
+                ['SRCDEST', '/work/demo/srcdest'],
+                ['SRCPKGDEST', '/work/demo/srcpkgdest'],
+                ['LOGDEST', '/work/demo/logdest'],
+                ['BUILDDIR', '/work/demo/builddir'],
+                ['PKGDEST', '/work/demo/pkgdest'],
+                ['CUSTOM_FLAG', 'kept'],
+            ],
             { nproc: 4, packager: 'PreAUR <preaur@example.test>', devtoolsBuild: true }
         );
+        const env = envPairsToRecord(pairs);
 
-        expect(env.PATH).toBe('/usr/bin');
         expect(env.CUSTOM_FLAG).toBe('kept');
         expect(env.SRCDEST).toBe('/work/demo/srcdest');
+        expect(env.SRCPKGDEST).toBe('/work/demo/srcpkgdest');
         expect(env.LOGDEST).toBe('/work/demo/logdest');
         expect(env.PKGDEST).toBe('/work/demo/pkgdest');
-        expect(env.MAKEPKG_CONF).toBe('/work/demo/makepkg.conf');
         expect(env.MAKEFLAGS).toBe('-j4');
         expect(env.NPROC).toBe('4');
         expect(env.PACKAGER).toBe('PreAUR <preaur@example.test>');
         expect(env.BUILDDIR).toBeUndefined();
         expect(env.COMPRESSZST).toBeUndefined();
+    });
+
+    test('renders explicit env assignments for spawn', () => {
+        const pairs = buildProcessEnvPairs(
+            [
+                ['PKGDEST', '/work/demo/pkgdest'],
+                ['PACKAGER', 'old value'],
+            ],
+            { nproc: 4, packager: 'PreAUR <preaur@example.test>', devtoolsBuild: false }
+        );
+
+        expect(envAssignments(pairs)).toContain('PKGDEST=/work/demo/pkgdest');
+        expect(envAssignments(pairs)).toContain('PACKAGER=PreAUR <preaur@example.test>');
+        expect(envAssignments(pairs)).not.toContain('PACKAGER=old value');
     });
 });

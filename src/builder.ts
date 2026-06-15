@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as fs from 'node:fs';
 import type { PreaurResources } from './config';
-import { writeMakepkgConfig } from './workdirs';
+import { envAssignments, filterEnvPairs, mergeEnvPairs, type EnvPair, type EnvPairs } from './env';
 
 const DEVTOOLS_IGNORED_ENV_KEYS = new Set([
     'BUILDDIR',
@@ -37,7 +37,7 @@ export interface BuildOptions {
     logStream?: fs.WriteStream;
     chrootWorker?: string;
     packager?: string;
-    env?: Record<string, string>;
+    env?: EnvPairs;
 }
 
 export interface BuildCommandPlan {
@@ -88,38 +88,33 @@ export function buildCommandPlan(
     return { cmd, args, isDevtoolsBuild };
 }
 
-export function buildProcessEnv(
-    baseEnv: Record<string, string | undefined>,
-    extraEnv: Record<string, string> | undefined,
+export function buildProcessEnvPairs(
+    extraEnv: EnvPairs | undefined,
     opts: {
         nproc: number;
         packager?: string;
         devtoolsBuild?: boolean;
     }
-): Record<string, string> {
-    const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(baseEnv)) {
-        if (value !== undefined) env[key] = value;
-    }
-
-    for (const [key, value] of Object.entries(extraEnv ?? {})) {
-        if (opts.devtoolsBuild && DEVTOOLS_IGNORED_ENV_KEYS.has(key)) continue;
-        env[key] = value;
-    }
-
-    env.MAKEFLAGS = `-j${opts.nproc}`;
+): EnvPair[] {
+    const normalizedExtraEnv = mergeEnvPairs(extraEnv);
+    const filteredExtraEnv = opts.devtoolsBuild
+        ? filterEnvPairs(normalizedExtraEnv, DEVTOOLS_IGNORED_ENV_KEYS)
+        : normalizedExtraEnv;
+    const generatedEnv: EnvPair[] = [
+        ['MAKEFLAGS', `-j${opts.nproc}`],
+    ];
 
     if (opts.devtoolsBuild) {
-        env.NPROC = String(opts.nproc);
+        generatedEnv.push(['NPROC', String(opts.nproc)]);
     } else {
-        env.COMPRESSZST = `zstd -c -T${opts.nproc} -`;
+        generatedEnv.push(['COMPRESSZST', `zstd -c -T${opts.nproc} -`]);
     }
 
     if (opts.packager) {
-        env.PACKAGER = opts.packager;
+        generatedEnv.push(['PACKAGER', opts.packager]);
     }
 
-    return env;
+    return mergeEnvPairs(filteredExtraEnv, generatedEnv);
 }
 
 export async function buildPackage(opts: BuildOptions): Promise<void> {
@@ -142,29 +137,16 @@ export async function buildPackage(opts: BuildOptions): Promise<void> {
     const buildPlan = buildCommandPlan(builder, { dummyPkgs, chrootWorker });
     const { cmd, args, isDevtoolsBuild } = buildPlan;
 
-    if (extraEnv?.MAKEPKG_CONF && extraEnv.SRCDEST && extraEnv.LOGDEST && extraEnv.BUILDDIR && extraEnv.PKGDEST) {
-        await writeMakepkgConfig(extraEnv.MAKEPKG_CONF, {
-            srcdest: extraEnv.SRCDEST,
-            logdest: extraEnv.LOGDEST,
-            builddir: extraEnv.BUILDDIR,
-            pkgdest: extraEnv.PKGDEST,
-            makeflags: `-j${nproc}`,
-            compressZstdThreads: nproc,
-            packager,
-        });
-    }
-
     return new Promise((resolve, reject) => {
-        const env = buildProcessEnv(process.env, extraEnv, {
+        const envPairs = buildProcessEnvPairs(extraEnv, {
             nproc,
             packager,
             devtoolsBuild: isDevtoolsBuild,
         });
 
-        const buildProcess = spawn(cmd, args, {
+        const buildProcess = spawn('env', [...envAssignments(envPairs), cmd, ...args], {
             cwd: pkgDir,
             stdio: logStream ? ['ignore', 'pipe', 'pipe'] : 'inherit',
-            env,
         });
 
         if (logStream && buildProcess.stdout && buildProcess.stderr) {

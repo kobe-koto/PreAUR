@@ -5,6 +5,7 @@ import * as path from 'node:path';
 
 import { runPackageVersionCheck, type PackageVersionCheckDeps } from '../src/package_check';
 import type { PreaurPackage } from '../src/config';
+import { envPairsToRecord, type EnvPairs } from '../src/env';
 import { VersionStore } from '../src/version_store';
 
 const tmpDirs: string[] = [];
@@ -190,8 +191,8 @@ describe('runPackageVersionCheck', () => {
         const store = new VersionStore(baseDir);
         await store.load();
 
-        let dynamicEnv: Record<string, string> | undefined;
-        let updateEnv: Record<string, string> | undefined;
+        let dynamicEnv: EnvPairs | undefined;
+        let updateEnv: EnvPairs | undefined;
         const deps = makeDeps({ pkgver: '1.0.0', pkgrel: 1 });
         deps.updateDynamicPkgver = async (pkgbuildPath, env) => {
             dynamicEnv = env;
@@ -208,23 +209,21 @@ describe('runPackageVersionCheck', () => {
             deps,
         });
 
-        expect(dynamicEnv).toEqual({
+        const dynamicEnvRecord = envPairsToRecord(dynamicEnv ?? []);
+        const updateEnvRecord = envPairsToRecord(updateEnv ?? []);
+
+        expect(dynamicEnvRecord).toEqual({
             SRCDEST: path.join(baseDir, 'work', 'demo', 'srcdest'),
+            SRCPKGDEST: path.join(baseDir, 'work', 'demo', 'srcpkgdest'),
             LOGDEST: path.join(baseDir, 'work', 'demo', 'logdest'),
             BUILDDIR: path.join(baseDir, 'work', 'demo', 'builddir'),
             PKGDEST: path.join(baseDir, 'work', 'demo', 'pkgdest'),
-            MAKEPKG_CONF: path.join(baseDir, 'work', 'demo', 'makepkg.conf'),
         });
-        expect(updateEnv).toEqual(dynamicEnv);
+        expect(updateEnvRecord).toEqual(dynamicEnvRecord);
         expect(result.buildPlans[0]?.workDirs.pkgdest).toBe(path.join(baseDir, 'work', 'demo', 'pkgdest'));
         expect(result.buildPlans[0]?.env).toEqual(dynamicEnv);
 
-        const makepkgConf = await fs.readFile(path.join(baseDir, 'work', 'demo', 'makepkg.conf'), 'utf8');
-        expect(makepkgConf).toContain(`SRCDEST='${path.join(baseDir, 'work', 'demo', 'srcdest')}'`);
-        expect(makepkgConf).toContain(`LOGDEST='${path.join(baseDir, 'work', 'demo', 'logdest')}'`);
-        expect(makepkgConf).toContain(`BUILDDIR='${path.join(baseDir, 'work', 'demo', 'builddir')}'`);
-        expect(makepkgConf).toContain(`PKGDEST='${path.join(baseDir, 'work', 'demo', 'pkgdest')}'`);
-
+        await expect(fs.stat(path.join(baseDir, 'work', 'demo', 'makepkg.conf'))).rejects.toThrow();
         await expect(fs.stat(path.join(baseDir, 'work', 'demo', 'logdest'))).rejects.toThrow();
     });
 
@@ -234,7 +233,7 @@ describe('runPackageVersionCheck', () => {
         const store = new VersionStore(baseDir);
         await store.load();
 
-        let updateEnv: Record<string, string> | undefined;
+        let updateEnv: EnvPairs | undefined;
         const deps = makeDeps({ pkgver: '1.0.0', pkgrel: 1 });
         deps.updatePkgBuild = async (pkgname, pkgbuildPath, updates, forceBumpRel, parser, env) => {
             updateEnv = env;
@@ -247,6 +246,6 @@ describe('runPackageVersionCheck', () => {
             deps,
         });
 
-        expect(updateEnv?.LOGDEST).toBe(path.join(sessionLogDir, 'demo'));
+        expect(envPairsToRecord(updateEnv ?? []).LOGDEST).toBe(path.join(sessionLogDir, 'demo'));
     });
 });

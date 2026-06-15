@@ -5,17 +5,13 @@ import * as path from 'node:path';
 import pc from 'picocolors';
 import type { PacmanVersion } from './pacman_version';
 import { constructMessager } from './logger';
+import { shellEnvCommand, shellQuote, type EnvPairs } from './env';
 
 const execAsync = promisify(exec);
-type CommandEnv = Record<string, string>;
 
 export type PkgBuildData = PacmanVersion;
 
 export type PkgBuildParser = 'native' | 'makepkg';
-
-function shellQuote(s: string): string {
-    return `'${s.replace(/'/g, `'\\''`)}'`;
-}
 
 /**
  * Source the PKGBUILD in a subshell so that variable references and bash
@@ -79,12 +75,10 @@ async function parsePkgBuildNative(pkgbuildPath: string): Promise<PkgBuildData> 
     return { epoch, pkgver, pkgrel };
 }
 
-async function parsePkgBuildMakepkg(pkgbuildPath: string, env?: CommandEnv): Promise<PkgBuildData> {
+async function parsePkgBuildMakepkg(pkgbuildPath: string, env?: EnvPairs): Promise<PkgBuildData> {
     const pkgbuildDir = path.dirname(pkgbuildPath);
-    const configArg = env?.MAKEPKG_CONF ? `--config ${shellQuote(env.MAKEPKG_CONF)} ` : '';
-    const { stdout } = await execAsync(`makepkg ${configArg}--printsrcinfo`, {
+    const { stdout } = await execAsync(shellEnvCommand('makepkg --printsrcinfo', env), {
         cwd: pkgbuildDir,
-        env: env ? { ...process.env, ...env } : process.env,
     });
 
     const fields: Record<string, string> = {};
@@ -112,13 +106,13 @@ async function parsePkgBuildMakepkg(pkgbuildPath: string, env?: CommandEnv): Pro
     return { epoch, pkgver: fields.pkgver, pkgrel };
 }
 
-export async function parsePkgBuild(pkgbuildPath: string, parser: PkgBuildParser = 'native', env?: CommandEnv): Promise<PkgBuildData> {
+export async function parsePkgBuild(pkgbuildPath: string, parser: PkgBuildParser = 'native', env?: EnvPairs): Promise<PkgBuildData> {
     return parser === 'makepkg'
         ? parsePkgBuildMakepkg(pkgbuildPath, env)
         : parsePkgBuildNative(pkgbuildPath);
 }
 
-export async function updateDynamicPkgver(pkgbuildPath: string, env?: CommandEnv): Promise<boolean> {
+export async function updateDynamicPkgver(pkgbuildPath: string, env?: EnvPairs): Promise<boolean> {
     const pkgMessager = constructMessager('PKGBUILD Updater', path.basename(path.dirname(pkgbuildPath)));
     const content = await fs.readFile(pkgbuildPath, 'utf8');
     if (!content.match(/^pkgver\(\)\s*\{/m)) {
@@ -132,10 +126,8 @@ export async function updateDynamicPkgver(pkgbuildPath: string, env?: CommandEnv
         // -o: extract and download sources
         // -d: skip dependency checks
         // -c: clean up working directory after
-        const configArg = env?.MAKEPKG_CONF ? `--config ${shellQuote(env.MAKEPKG_CONF)} ` : '';
-        await execAsync(`makepkg ${configArg}-odc --noconfirm --skipinteg`, {
+        await execAsync(shellEnvCommand('makepkg -odc --noconfirm --skipinteg', env), {
             cwd: pkgbuildDir,
-            env: env ? { ...process.env, ...env } : process.env,
         });
         return true;
     } catch (e: any) {
@@ -150,7 +142,7 @@ export async function updatePkgBuild(
     updates: Record<string, string>,
     forceBumpRel: boolean = false,
     parser: PkgBuildParser = 'native',
-    env?: CommandEnv
+    env?: EnvPairs
 ): Promise<boolean> {
     const pkgMessager = constructMessager('PKGBUILD Updater', pkgname);
     let content = await fs.readFile(pkgbuildPath, 'utf8');
@@ -201,9 +193,8 @@ export async function updatePkgBuild(
     try {
         const pkgbuildDir = path.dirname(pkgbuildPath);
         // console.log(pkgMessager(`Running updpkgsums in ${pkgbuildDir}...`));
-        await execAsync('updpkgsums', {
+        await execAsync(shellEnvCommand('updpkgsums', env), {
             cwd: pkgbuildDir,
-            env: env ? { ...process.env, ...env } : process.env,
         });
     } catch (e: any) {
         console.error(pkgMessager(pc.red(`Failed to run updpkgsums: ${e.message}`)));

@@ -2,13 +2,14 @@ import * as path from 'node:path';
 import type { SimpleGit } from 'simple-git';
 
 import type { PreaurPackage, PreaurRepo } from './config';
+import type { EnvPairs } from './env';
 import type { CheckerResult } from './checker';
 import { applyVersionTemplate, fetchLatestVersion } from './checker';
 import { preparePackageDiff, type GitCloneResult } from './git';
 import { parsePkgBuild, updateDynamicPkgver, updatePkgBuild, type PkgBuildData, type PkgBuildParser } from './pkgbuild';
 import { VersionStore } from './version_store';
 import { hasBuiltPackage } from './repo';
-import { ensurePackageCheckWorkDirs, getPackageWorkDirs, packageWorkEnv, writePackageMakepkgConfig, type PackageWorkDirs } from './workdirs';
+import { ensurePackageCheckWorkDirs, getPackageWorkDirs, packageWorkEnvPairs, type PackageWorkDirs } from './workdirs';
 import { formatPacmanVersion, hasPacmanVersion, pacmanVersionChanged } from './pacman_version';
 import { constructMessager } from './logger';
 import pc from 'picocolors';
@@ -21,7 +22,7 @@ export interface PackageBuildPlan {
     finalData: PkgBuildData;
     pkgbuildModified: boolean;
     workDirs: PackageWorkDirs;
-    env: Record<string, string>;
+    env: EnvPairs;
 }
 
 export interface PackageVersionCheckResult {
@@ -142,8 +143,7 @@ async function processPackageVersionCheck(
         sessionLogDir ? path.resolve(sessionLogDir, pkg.pkgname) : undefined
     );
     await ensurePackageCheckWorkDirs(workDirs);
-    await writePackageMakepkgConfig(workDirs);
-    const env = packageWorkEnv(workDirs);
+    const env = packageWorkEnvPairs(workDirs);
 
     const { path: pkgDir, git }: GitCloneResult = await prepare(
         pkg.pkgname,
