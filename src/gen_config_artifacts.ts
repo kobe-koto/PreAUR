@@ -24,6 +24,11 @@ interface ConfigReferenceRow {
 const rootDir = path.resolve(import.meta.dir, '..');
 const schemaPath = path.resolve(rootDir, 'preaur.schema.json');
 const docsPath = path.resolve(rootDir, 'docs', 'config-reference.md');
+const manDir = path.resolve(rootDir, 'docs', 'man');
+const cliManPath = path.resolve(manDir, 'preaur.1');
+const configManPath = path.resolve(manDir, 'preaur-config.5');
+const packageInfo = JSON.parse(await fs.readFile(path.resolve(rootDir, 'package.json'), 'utf8')) as { version?: string };
+const version = packageInfo.version ?? 'unknown';
 
 const schema = z.toJSONSchema(PreaurRawConfigSchema, {
     target: 'draft-7',
@@ -35,9 +40,14 @@ schema.$schema = 'http://json-schema.org/draft-07/schema#';
 await fs.writeFile(schemaPath, `${JSON.stringify(schema, null, 4)}\n`, 'utf8');
 await fs.mkdir(path.dirname(docsPath), { recursive: true });
 await fs.writeFile(docsPath, renderConfigReference(schema), 'utf8');
+await fs.mkdir(manDir, { recursive: true });
+await fs.writeFile(cliManPath, renderCliManPage(version), 'utf8');
+await fs.writeFile(configManPath, renderConfigManPage(schema, version), 'utf8');
 
 console.log(`Generated ${path.relative(rootDir, schemaPath)}`);
 console.log(`Generated ${path.relative(rootDir, docsPath)}`);
+console.log(`Generated ${path.relative(rootDir, cliManPath)}`);
+console.log(`Generated ${path.relative(rootDir, configManPath)}`);
 
 function renderConfigReference(schema: JsonSchema): string {
     const sections = collectSections(schema);
@@ -57,6 +67,81 @@ function renderConfigReference(schema: JsonSchema): string {
     }
 
     return `${lines.join('\n').trimEnd()}\n`;
+}
+
+function renderCliManPage(version: string): string {
+    return roff([
+        `.TH PREAUR 1 "" "PreAUR ${roffInline(version)}" "User Commands"`,
+        '.SH NAME',
+        'preaur \\- automated Arch Linux package builder helper',
+        '.SH SYNOPSIS',
+        '.B preaur',
+        '[\\fB-c\\fR \\fIpath\\fR] [\\fB-p\\fR \\fIname\\fR]',
+        '.SH DESCRIPTION',
+        'PreAUR checks configured packages, updates PKGBUILD metadata, builds packages, and updates a local pacman repository.',
+        '.SH OPTIONS',
+        '.TP',
+        '.BR \\-c ", " \\-\\-config " " \\fIpath\\fR',
+        'Path to the YAML configuration file. Defaults to \\fBpreaur.config.yaml\\fR.',
+        '.TP',
+        '.BR \\-p ", " \\-\\-pkg " " \\fIname\\fR',
+        'Only process the package with this configured package name.',
+        '.TP',
+        '.BR \\-V ", " \\-\\-version',
+        'Print the PreAUR version.',
+        '.TP',
+        '.BR \\-h ", " \\-\\-help',
+        'Print command help.',
+        '.SH FILES',
+        '.TP',
+        '.B preaur.config.yaml',
+        'Main configuration file. See \\fBpreaur-config\\fR(5).',
+        '.TP',
+        '.B data/versions.json',
+        'Stored package version and ownership state.',
+        '.TP',
+        '.B data/known_packages',
+        'Known package trust list.',
+        '.TP',
+        '.B data/known_maintainers',
+        'Known AUR maintainer trust list.',
+        '.SH SEE ALSO',
+        '.BR preaur-config (5),',
+        '.BR makepkg (8),',
+        '.BR repo-add (8)',
+    ]);
+}
+
+function renderConfigManPage(schema: JsonSchema, version: string): string {
+    const sections = collectSections(schema);
+    const lines = [
+        `.TH PREAUR-CONFIG 5 "" "PreAUR ${roffInline(version)}" "File Formats"`,
+        '.SH NAME',
+        'preaur.config.yaml \\- PreAUR configuration file',
+        '.SH DESCRIPTION',
+        'The PreAUR configuration file is YAML. It defines maintainers, package checks, build resources, project git automation, and optional chroot pacman repository settings.',
+        '.SH FIELDS',
+    ];
+
+    for (const section of sections) {
+        lines.push('.SS', roffInline(section.title));
+        if (section.description) lines.push(roffText(section.description));
+
+        for (const row of section.rows) {
+            lines.push('.TP');
+            lines.push(`.B ${roffInline(row.key)}`);
+            lines.push(roffText(formatManRow(row)));
+        }
+    }
+
+    lines.push(
+        '.SH GENERATED FROM',
+        'This page is generated from the Zod configuration schema by \\fBbun run gen-schema\\fR.',
+        '.SH SEE ALSO',
+        '.BR preaur (1)'
+    );
+
+    return roff(lines);
 }
 
 function collectSections(root: JsonSchema): ConfigSection[] {
@@ -182,4 +267,29 @@ function formatDefault(value: unknown): string {
 
 function escapeCell(value: string): string {
     return value.replaceAll('|', '\\|').replaceAll('\n', ' ');
+}
+
+function formatManRow(row: ConfigReferenceRow): string {
+    const parts = [
+        `Type: ${row.type}.`,
+        `Required: ${row.required ? 'yes' : 'no'}.`,
+    ];
+    if (row.defaultValue) parts.push(`Default: ${row.defaultValue}.`);
+    if (row.description) parts.push(row.description);
+    return parts.join(' ');
+}
+
+function roff(lines: string[]): string {
+    return `${lines.join('\n').trimEnd()}\n`;
+}
+
+function roffText(value: string): string {
+    const escaped = roffInline(value);
+    return escaped.startsWith('.') || escaped.startsWith("'") ? `\\&${escaped}` : escaped;
+}
+
+function roffInline(value: string): string {
+    return value
+        .replaceAll('\\', '\\\\')
+        .replaceAll('-', '\\-');
 }

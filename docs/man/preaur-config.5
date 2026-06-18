@@ -1,0 +1,276 @@
+.TH PREAUR-CONFIG 5 "" "PreAUR 0.0.5" "File Formats"
+.SH NAME
+preaur.config.yaml \- PreAUR configuration file
+.SH DESCRIPTION
+The PreAUR configuration file is YAML. It defines maintainers, package checks, build resources, project git automation, and optional chroot pacman repository settings.
+.SH FIELDS
+.SS
+Top\-Level
+.TP
+.B maintainers
+Type: array<object>. Required: yes. Known PreAUR maintainers.
+.TP
+.B default_maintainer
+Type: string. Required: no. Maintainer id used when a package omits maintainer.
+.TP
+.B git
+Type: object. Required: no. Default: {}. Project repository automation.
+.TP
+.B config
+Type: object. Required: no. Runtime behavior settings.
+.TP
+.B resources
+Type: object. Required: no. Default: {}. Build and check concurrency settings.
+.TP
+.B repo
+Type: object. Required: no. Local pacman repository settings.
+.TP
+.B packages
+Type: array<object>. Required: yes. Packages managed by PreAUR.
+.SS
+maintainers[]
+A packager identity.
+.TP
+.B id
+Type: string. Required: yes. Stable maintainer id used by packages.
+.TP
+.B name
+Type: string. Required: yes. Maintainer display name.
+.TP
+.B email
+Type: string. Required: yes. Maintainer email address.
+.SS
+git
+Project repository automation.
+.TP
+.B enabled
+Type: boolean. Required: no. Default: true. Enable project git automation.
+.TP
+.B remote
+Type: string. Required: no. Default: "origin". Remote used for sync and push.
+.TP
+.B branch
+Type: string. Required: no. Branch used for sync and push. Default: current branch.
+.TP
+.B sync
+Type: object. Required: no. Default: {}. Project git startup sync policy.
+.TP
+.B push
+Type: object. Required: no. Default: {}. Project git push policy.
+.SS
+git.sync
+Project git startup sync policy.
+.TP
+.B allow_remote_overwrite_local
+Type: boolean. Required: no. Default: false. Reset local state to remote during sync.
+.TP
+.B allowRemoteOverwriteLocal
+Type: boolean. Required: no. CamelCase alias for allow_remote_overwrite_local.
+.SS
+git.push
+Project git push policy.
+.TP
+.B force
+Type: boolean. Required: no. Default: false. Use git push \-\-force after builds.
+.SS
+config
+Runtime behavior settings.
+.TP
+.B pkgbuildParser
+Type: native | makepkg. Required: no. PKGBUILD parser implementation.
+.TP
+.B trustedAurGitPrefixes
+Type: array<string>. Required: no. Git URL prefixes treated as AUR package sources.
+.TP
+.B chrootPacman
+Type: object. Required: no. Pacman configuration added to devtools chroots.
+.SS
+config.chrootPacman
+Pacman configuration added to devtools chroots.
+.TP
+.B include
+Type: array<string>. Required: no. Host files included into generated pacman.conf.
+.TP
+.B lines
+Type: array<string>. Required: no. Raw pacman.conf lines appended globally.
+.TP
+.B repositories
+Type: array<object>. Required: no. Custom chroot pacman repositories.
+.SS
+config.chrootPacman.repositories[]
+A custom pacman repository for chroot builds.
+.TP
+.B name
+Type: string. Required: yes. Pacman repository name.
+.TP
+.B siglevel
+Type: string | array<string>. Required: no. Repository SigLevel line.
+.TP
+.B include
+Type: array<string>. Required: no. Host files included into this repository block.
+.TP
+.B lines
+Type: array<string>. Required: no. Raw pacman.conf lines appended to this repository block.
+.SS
+resources
+Build and check concurrency settings.
+.TP
+.B cpu
+Type: string. Required: no. CPU allocation passed to builders.
+.TP
+.B parallel
+Type: integer. Required: no. Default: 2. Concurrent package builds.
+.TP
+.B updateCheckCocurrent
+Type: integer. Required: no. Default: 1. Concurrent version checks.
+.SS
+repo
+Local pacman repository settings.
+.TP
+.B name
+Type: string. Required: yes. Local pacman repository name.
+.SS
+packages[]
+A package build entry.
+.TP
+.B pkgname
+Type: string. Required: yes. Local package name.
+.TP
+.B maintainer
+Type: string. Required: no. Maintainer id. Defaults to default_maintainer.
+.TP
+.B allow_orphan_package_build
+Type: boolean. Required: no. Allow building an orphan AUR package.
+.TP
+.B aur_pkgname
+Type: string. Required: no. AUR package name when it differs from pkgname.
+.TP
+.B git
+Type: string. Required: no. Package PKGBUILD git URL override.
+.TP
+.B checker
+Type: object. Required: no. Upstream version checker.
+.TP
+.B builder
+Type: string. Required: no. Build command such as extra\-x86_64\-build.
+.TP
+.B push
+Type: boolean. Required: no. Push package PKGBUILD changes to AUR on success.
+.TP
+.B dummy_packages
+Type: array<object>. Required: no. Dummy packages installed before build.
+.TP
+.B repo_packages
+Type: array<string>. Required: no. Local repo packages required before this build.
+.TP
+.B pre\-build\-packages
+Type: array<string>. Required: no. Packages installed in chroot before build.
+.TP
+.B pre\-build\-scripts
+Type: array<string>. Required: no. Root scripts run in chroot before build.
+.TP
+.B pre_build_packages
+Type: array<string>. Required: no. Alias for pre\-build\-packages.
+.TP
+.B pre_build_scripts
+Type: array<string>. Required: no. Alias for pre\-build\-scripts.
+.SS
+packages[].checker: github
+GitHub version checker.
+.TP
+.B strip_version
+Type: boolean. Required: no. Strip common version prefixes before comparison.
+.TP
+.B normalize
+Type: boolean. Required: no. Normalize upstream version text.
+.TP
+.B template
+Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables.
+.TP
+.B type
+Type: "github". Required: yes. Use GitHub release data.
+.TP
+.B repo
+Type: string. Required: yes. GitHub repository as owner/name.
+.TP
+.B use
+Type: string. Required: no. Release selector such as release or prerelease.
+.TP
+.B prefix
+Type: string. Required: no. Version tag prefix to strip.
+.TP
+.B suffix
+Type: string. Required: no. Version tag suffix to strip.
+.SS
+packages[].checker: deb
+Debian repository version checker.
+.TP
+.B strip_version
+Type: boolean. Required: no. Strip common version prefixes before comparison.
+.TP
+.B normalize
+Type: boolean. Required: no. Normalize upstream version text.
+.TP
+.B template
+Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables.
+.TP
+.B type
+Type: "deb". Required: yes. Use a Debian Packages index.
+.TP
+.B url
+Type: string. Required: yes. Repository base URL.
+.TP
+.B pkg
+Type: string. Required: yes. Debian package name.
+.TP
+.B dist
+Type: string. Required: yes. Debian distribution name.
+.TP
+.B component
+Type: string. Required: yes. Debian repository component.
+.TP
+.B arch
+Type: string. Required: no. Debian architecture.
+.SS
+packages[].checker: rpm
+RPM repository version checker.
+.TP
+.B strip_version
+Type: boolean. Required: no. Strip common version prefixes before comparison.
+.TP
+.B normalize
+Type: boolean. Required: no. Normalize upstream version text.
+.TP
+.B template
+Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables.
+.TP
+.B type
+Type: "rpm". Required: yes. Use an RPM repository.
+.TP
+.B url
+Type: string. Required: yes. Repository base URL.
+.TP
+.B pkg
+Type: string. Required: yes. RPM package name.
+.SS
+packages[].dummy_packages[]
+A generated dummy dependency package.
+.TP
+.B dummy
+Type: string. Required: yes. Dummy package name.
+.TP
+.B epoch
+Type: string | number. Required: no. Dummy package epoch.
+.TP
+.B pkgver
+Type: string | number. Required: no. Dummy package version.
+.TP
+.B pkgrel
+Type: string | number. Required: no. Dummy package release.
+.TP
+.B files
+Type: array<string>. Required: no. Files provided by the dummy package.
+.SH GENERATED FROM
+This page is generated from the Zod configuration schema by \fBbun run gen-schema\fR.
+.SH SEE ALSO
+.BR preaur (1)

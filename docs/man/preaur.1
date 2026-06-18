@@ -1,0 +1,38 @@
+.TH PREAUR 1 "" "PreAUR 0.0.5" "User Commands"
+.SH NAME
+preaur \- automated Arch Linux package builder helper
+.SH SYNOPSIS
+.B preaur
+[\fB-c\fR \fIpath\fR] [\fB-p\fR \fIname\fR]
+.SH DESCRIPTION
+PreAUR checks configured packages, updates PKGBUILD metadata, builds packages, and updates a local pacman repository.
+.SH OPTIONS
+.TP
+.BR \-c ", " \-\-config " " \fIpath\fR
+Path to the YAML configuration file. Defaults to \fBpreaur.config.yaml\fR.
+.TP
+.BR \-p ", " \-\-pkg " " \fIname\fR
+Only process the package with this configured package name.
+.TP
+.BR \-V ", " \-\-version
+Print the PreAUR version.
+.TP
+.BR \-h ", " \-\-help
+Print command help.
+.SH FILES
+.TP
+.B preaur.config.yaml
+Main configuration file. See \fBpreaur-config\fR(5).
+.TP
+.B data/versions.json
+Stored package version and ownership state.
+.TP
+.B data/known_packages
+Known package trust list.
+.TP
+.B data/known_maintainers
+Known AUR maintainer trust list.
+.SH SEE ALSO
+.BR preaur-config (5),
+.BR makepkg (8),
+.BR repo-add (8)
