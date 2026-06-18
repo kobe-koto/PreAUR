@@ -16,7 +16,7 @@ It streamlines the process of fetching, updating, building, and publishing packa
 
 ### Installation
 
-Clone the repository and install dependencies:
+from AUR:
 
 ```bash
 paru -S preaur-git # Recommended because i like it
