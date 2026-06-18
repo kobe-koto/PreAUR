@@ -25,6 +25,23 @@ export interface PreaurRuntimeConfig {
     chrootPacman?: PreaurChrootPacmanConfig;
 }
 
+export interface PreaurProjectGitSyncConfig {
+    allowRemoteOverwriteLocal?: boolean;
+    allow_remote_overwrite_local?: boolean;
+}
+
+export interface PreaurProjectGitPushConfig {
+    force?: boolean;
+}
+
+export interface PreaurProjectGitConfig {
+    enabled?: boolean;
+    remote?: string;
+    branch?: string;
+    sync?: PreaurProjectGitSyncConfig;
+    push?: PreaurProjectGitPushConfig;
+}
+
 export interface PreaurChrootPacmanRepository {
     name: string;
     siglevel?: string | string[];
@@ -97,6 +114,7 @@ export interface PreaurPackage {
 export interface PreaurConfig {
     maintainers: PreaurMaintainer[];
     default_maintainer?: string;
+    git?: PreaurProjectGitConfig;
     config?: PreaurRuntimeConfig;
     resources: PreaurResources;
     repo: PreaurRepo;
@@ -125,6 +143,8 @@ export async function loadConfig(configPath: string): Promise<PreaurConfig> {
             throw new Error('Config config.trustedAurGitPrefixes must be an array');
         }
         normalizeChrootPacmanConfig(config.config?.chrootPacman, configDir);
+        config.git ??= {};
+        normalizeProjectGitConfig(config.git);
 
         const maintainerIds = new Set(config.maintainers.map((m: PreaurMaintainer) => m.id));
         if (config.default_maintainer && !maintainerIds.has(config.default_maintainer)) {
@@ -157,6 +177,45 @@ export async function loadConfig(configPath: string): Promise<PreaurConfig> {
         return config as PreaurConfig;
     } catch (error: any) {
         throw new Error(`Failed to load config from ${configPath}: ${error.message}`);
+    }
+}
+
+function normalizeProjectGitConfig(value: Partial<PreaurProjectGitConfig> | undefined): void {
+    const gitConfig = value ?? {};
+    if (typeof gitConfig !== 'object' || Array.isArray(gitConfig)) {
+        throw new Error('Config git must be an object');
+    }
+
+    if (gitConfig.enabled !== undefined && typeof gitConfig.enabled !== 'boolean') {
+        throw new Error('Config git.enabled must be a boolean');
+    }
+    if (gitConfig.remote !== undefined && typeof gitConfig.remote !== 'string') {
+        throw new Error('Config git.remote must be a string');
+    }
+    if (gitConfig.branch !== undefined && typeof gitConfig.branch !== 'string') {
+        throw new Error('Config git.branch must be a string');
+    }
+
+    gitConfig.enabled ??= true;
+    gitConfig.remote ??= 'origin';
+    gitConfig.sync ??= {};
+    gitConfig.push ??= {};
+
+    if (typeof gitConfig.sync !== 'object' || Array.isArray(gitConfig.sync)) {
+        throw new Error('Config git.sync must be an object');
+    }
+    if (typeof gitConfig.push !== 'object' || Array.isArray(gitConfig.push)) {
+        throw new Error('Config git.push must be an object');
+    }
+
+    if (gitConfig.sync.allowRemoteOverwriteLocal !== undefined && typeof gitConfig.sync.allowRemoteOverwriteLocal !== 'boolean') {
+        throw new Error('Config git.sync.allowRemoteOverwriteLocal must be a boolean');
+    }
+    if (gitConfig.sync.allow_remote_overwrite_local !== undefined && typeof gitConfig.sync.allow_remote_overwrite_local !== 'boolean') {
+        throw new Error('Config git.sync.allow_remote_overwrite_local must be a boolean');
+    }
+    if (gitConfig.push.force !== undefined && typeof gitConfig.push.force !== 'boolean') {
+        throw new Error('Config git.push.force must be a boolean');
     }
 }
 

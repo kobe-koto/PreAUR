@@ -23,6 +23,57 @@ afterEach(async () => {
 });
 
 describe('loadConfig', () => {
+    test('enables project git automation by default', async () => {
+        const configPath = await writeConfig(`
+maintainers:
+  - id: johndoe
+    name: John Doe
+    email: john@example.com
+default_maintainer: johndoe
+packages:
+  - pkgname: demo
+`);
+
+        const config = await loadConfig(configPath);
+
+        expect(config.git).toMatchObject({
+            enabled: true,
+            remote: 'origin',
+            sync: {},
+            push: {},
+        });
+    });
+
+    test('accepts project git sync and push options', async () => {
+        const configPath = await writeConfig(`
+git:
+  enabled: true
+  remote: upstream
+  branch: packages
+  sync:
+    allow_remote_overwrite_local: true
+  push:
+    force: true
+maintainers:
+  - id: johndoe
+    name: John Doe
+    email: john@example.com
+default_maintainer: johndoe
+packages:
+  - pkgname: demo
+`);
+
+        const config = await loadConfig(configPath);
+
+        expect(config.git).toMatchObject({
+            enabled: true,
+            remote: 'upstream',
+            branch: 'packages',
+            sync: { allow_remote_overwrite_local: true },
+            push: { force: true },
+        });
+    });
+
     test('fills missing package maintainer from default_maintainer', async () => {
         const configPath = await writeConfig(`
 maintainers:

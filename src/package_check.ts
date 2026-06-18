@@ -12,6 +12,7 @@ import { hasBuiltPackage } from './repo';
 import { ensurePackageCheckWorkDirs, getPackageWorkDirs, packageWorkEnvPairs, type PackageWorkDirs } from './workdirs';
 import { formatPacmanVersion, hasPacmanVersion, pacmanVersionChanged } from './pacman_version';
 import { constructMessager } from './logger';
+import { saveVersionStoreUpdate, type ProjectGitManager } from './project_git';
 import pc from 'picocolors';
 
 export interface PackageBuildPlan {
@@ -67,6 +68,7 @@ export async function runPackageVersionCheck(
         sessionLogDir?: string;
         deps?: PackageVersionCheckDeps;
         updateCheckCocurrent?: number;
+        projectGit?: ProjectGitManager;
     } = {}
 ): Promise<PackageVersionCheckResult> {
     const {
@@ -75,7 +77,8 @@ export async function runPackageVersionCheck(
         repo,
         sessionLogDir,
         deps = {},
-        updateCheckCocurrent = 1
+        updateCheckCocurrent = 1,
+        projectGit,
     } = options;
 
     console.log(UpdateCheckerMessager(`Checking package versions for ${packages.length} package(s) with concurrency of ${updateCheckCocurrent}...`));
@@ -91,6 +94,7 @@ export async function runPackageVersionCheck(
             repo,
             sessionLogDir,
             deps,
+            projectGit,
         }).then(result => {
             if ('skipped' in result && result.skipped && result.reason) {
                 console.log(UpdateCheckerMessager(`Package ${pkg.pkgname} skipped, reason: ${result.reason}`))
@@ -118,6 +122,7 @@ async function processPackageVersionCheck(
         repo?: PreaurRepo;
         sessionLogDir?: string;
         deps: PackageVersionCheckDeps;
+        projectGit?: ProjectGitManager;
     }
 ): Promise<PackageBuildPlan | { skipped: true; reason?: string }> {
     const {
@@ -126,6 +131,7 @@ async function processPackageVersionCheck(
         repo,
         sessionLogDir,
         deps,
+        projectGit,
     } = options;
 
     const prepare = deps.preparePackageDiff ?? preparePackageDiff;
@@ -175,8 +181,7 @@ async function processPackageVersionCheck(
     if (!hasPacmanVersion(localData) && repo) {
         const alreadyBuilt = await hasBuilt(repo, pkg.pkgname, finalData, baseDir);
         if (alreadyBuilt) {
-            versionStore.set(pkg.pkgname, finalData);
-            await versionStore.save();
+            await saveVersionStoreUpdate(versionStore, pkg.pkgname, finalData, projectGit);
             return {
                 skipped: true,
                 reason: `no stored successful build version but artifact already exists; synced version store (${formatPacmanVersion(finalData)})`,

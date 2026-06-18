@@ -17,6 +17,7 @@ import { VersionStore } from './version_store';
 import { runApprovalCheck } from './approval';
 import { runPackageVersionCheck, type PackageBuildPlan } from './package_check';
 import { ensurePackageLogDir } from './workdirs';
+import { ProjectGitManager, saveVersionStoreUpdate } from './project_git';
 
 declare const VERSION: string;
 let displayVersion;
@@ -42,7 +43,11 @@ program
             console.log(PreaurMessager(`Loading config from ${options.config}`));
 
             const configPath = path.resolve(process.cwd(), options.config);
-            const config = await loadConfig(configPath);
+            let config = await loadConfig(configPath);
+            const projectGit = await ProjectGitManager.create(process.cwd(), config.git);
+            if (projectGit) {
+                config = await loadConfig(configPath);
+            }
             const pkgbuildParser = config.config?.pkgbuildParser || 'native';
 
             const packagesToProcess = options.pkg
@@ -57,16 +62,30 @@ program
             const versionStore = new VersionStore(process.cwd());
             await versionStore.load();
 
-            const { buildablePackages: approvedPackages } = await runApprovalCheck(
-                packagesToProcess,
-                versionStore,
-                process.cwd(),
-                undefined,
-                config.config?.trustedAurGitPrefixes
-            );
+            const approvalSnapshot = await projectGit?.snapshotData();
+            let approvedPackages: typeof packagesToProcess;
+            try {
+                const approvalResult = await runApprovalCheck(
+                    packagesToProcess,
+                    versionStore,
+                    process.cwd(),
+                    undefined,
+                    config.config?.trustedAurGitPrefixes
+                );
+                approvedPackages = approvalResult.buildablePackages;
+            } catch (e) {
+                if (approvalSnapshot) {
+                    await projectGit?.commitDataChanges(approvalSnapshot);
+                }
+                throw e;
+            }
+            if (approvalSnapshot) {
+                await projectGit?.commitDataChanges(approvalSnapshot);
+            }
 
             if (approvedPackages.length === 0) {
                 console.log(PreaurMessager('No packages are eligible for build after check phase.'));
+                await projectGit?.pushIfNeeded();
                 return;
             }
 
@@ -79,11 +98,13 @@ program
                     repo: config.repo,
                     sessionLogDir: getSessionLogDir(),
                     updateCheckCocurrent: config.resources.updateCheckCocurrent,
+                    projectGit,
                 }
             );
 
             if (buildPlans.length === 0) {
                 console.log(PreaurMessager('No packages have version updates after check phase.'));
+                await projectGit?.pushIfNeeded();
                 return;
             }
 
@@ -213,8 +234,7 @@ program
                                 }
 
                                 // Sync successful build variables
-                                versionStore.set(pkg.pkgname, finalData);
-                                await versionStore.save();
+                                await saveVersionStoreUpdate(versionStore, pkg.pkgname, finalData, projectGit);
 
                             } catch (pkgError: any) {
                                 console.error(PreaurMessager(`Error processing ${pkg.pkgname}: ${pkgError.message}`));
@@ -242,6 +262,8 @@ program
 
             // Wait for all pre-registered topological promises to resolve
             await Promise.all(pkgPromises.values());
+
+            await projectGit?.pushIfNeeded();
 
             console.log(PreaurMessager(`\nAll tasks finished.`));
         } catch (err: any) {

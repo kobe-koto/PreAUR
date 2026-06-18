@@ -274,6 +274,48 @@
             ],
             "type": "object"
         },
+        "PreaurProjectGitConfig": {
+            "additionalProperties": false,
+            "properties": {
+                "branch": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "push": {
+                    "$ref": "#/definitions/PreaurProjectGitPushConfig"
+                },
+                "remote": {
+                    "type": "string"
+                },
+                "sync": {
+                    "$ref": "#/definitions/PreaurProjectGitSyncConfig"
+                }
+            },
+            "type": "object"
+        },
+        "PreaurProjectGitPushConfig": {
+            "additionalProperties": false,
+            "properties": {
+                "force": {
+                    "type": "boolean"
+                }
+            },
+            "type": "object"
+        },
+        "PreaurProjectGitSyncConfig": {
+            "additionalProperties": false,
+            "properties": {
+                "allowRemoteOverwriteLocal": {
+                    "type": "boolean"
+                },
+                "allow_remote_overwrite_local": {
+                    "type": "boolean"
+                }
+            },
+            "type": "object"
+        },
         "PreaurRepo": {
             "additionalProperties": false,
             "properties": {
@@ -364,6 +406,9 @@
         },
         "default_maintainer": {
             "type": "string"
+        },
+        "git": {
+            "$ref": "#/definitions/PreaurProjectGitConfig"
         },
         "maintainers": {
             "items": {
