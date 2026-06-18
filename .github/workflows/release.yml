@@ -28,6 +28,13 @@ jobs:
           bun run build # build PreAUR
           bun run gen-schema # generate preaur.schema.json
 
+      - name: Generate Release Notes
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          bash ./.github/generate-release-notes.sh
+
       - name: Prepare Artifact
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -39,19 +46,13 @@ jobs:
           install -Dm644 ./docs/config-reference.md "${artifact_dir}/docs/config-reference.md"
           install -Dm644 ./docs/man/preaur.1 "${artifact_dir}/docs/man/preaur.1"
           install -Dm644 ./docs/man/preaur-config.5 "${artifact_dir}/docs/man/preaur-config.5"
+          install -Dm644 ./release.md "${artifact_dir}/CHANGELOG.md"
           install -Dm644 ./README.md "${artifact_dir}/README.md"
           install -Dm644 ./LICENSE "${artifact_dir}/LICENSE"
           install -Dm644 ./package.json "${artifact_dir}/package.json"
 
           tar -C ./dist/release -czf "./dist/${artifact_name}.tar.gz" "${artifact_name}"
           sha256sum "./dist/${artifact_name}.tar.gz" > "./dist/${artifact_name}.tar.gz.sha256"
-
-      - name: Generate Release Notes
-        env:
-          RELEASE_VERSION: ${{ github.ref_name }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          bash ./.github/generate-release-notes.sh
 
       - name: Upload Release
         uses: softprops/action-gh-release@v2
