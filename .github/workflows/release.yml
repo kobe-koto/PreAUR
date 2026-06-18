@@ -30,9 +30,21 @@ jobs:
 
       - name: Prepare Artifact
         run: |
-          mv ./dist/index.js ./dist/preaur.min.js
-          mv ./dist/index.js.map ./dist/preaur.min.js.map
-          mv ./preaur.schema.json ./dist/preaur.schema.json
+          version="${GITHUB_REF_NAME#v}"
+          artifact_name="preaur-v${version}"
+          artifact_dir="./dist/release/${artifact_name}"
+
+          install -Dm755 ./dist/index.js "${artifact_dir}/preaur"
+          install -Dm644 ./preaur.schema.json "${artifact_dir}/preaur.schema.json"
+          install -Dm644 ./docs/config-reference.md "${artifact_dir}/docs/config-reference.md"
+          install -Dm644 ./docs/man/preaur.1 "${artifact_dir}/docs/man/preaur.1"
+          install -Dm644 ./docs/man/preaur-config.5 "${artifact_dir}/docs/man/preaur-config.5"
+          install -Dm644 ./README.md "${artifact_dir}/README.md"
+          install -Dm644 ./LICENSE "${artifact_dir}/LICENSE"
+          install -Dm644 ./package.json "${artifact_dir}/package.json"
+
+          tar -C ./dist/release -czf "./dist/${artifact_name}.tar.gz" "${artifact_name}"
+          sha256sum "./dist/${artifact_name}.tar.gz" > "./dist/${artifact_name}.tar.gz.sha256"
 
       - name: Generate Release Notes
         env:
@@ -46,6 +58,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           body_path: release.md
-          files: ./dist/preaur.min.js, ./dist/preaur.min.js.map, ./dist/preaur.schema.json
+          files: |
+            ./dist/preaur-v*.tar.gz
+            ./dist/preaur-v*.tar.gz.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
