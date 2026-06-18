@@ -1,440 +1,497 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "additionalProperties": false,
-    "definitions": {
-        "PreaurChrootPacmanConfig": {
-            "additionalProperties": false,
-            "properties": {
-                "include": {
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                },
-                "lines": {
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                },
-                "repositories": {
-                    "items": {
-                        "$ref": "#/definitions/PreaurChrootPacmanRepository"
-                    },
-                    "type": "array"
-                }
-            },
-            "type": "object"
-        },
-        "PreaurChrootPacmanRepository": {
-            "additionalProperties": false,
-            "properties": {
-                "include": {
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                },
-                "lines": {
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "siglevel": {
-                    "anyOf": [
-                        {
-                            "items": {
-                                "type": "string"
-                            },
-                            "type": "array"
-                        },
-                        {
-                            "type": "string"
-                        }
-                    ]
-                }
-            },
-            "required": [
-                "name"
-            ],
-            "type": "object"
-        },
-        "PreaurDebChecker": {
-            "additionalProperties": false,
-            "properties": {
-                "arch": {
-                    "type": "string"
-                },
-                "component": {
-                    "type": "string"
-                },
-                "dist": {
-                    "type": "string"
-                },
-                "normalize": {
-                    "type": "boolean"
-                },
-                "pkg": {
-                    "type": "string"
-                },
-                "strip_version": {
-                    "type": "boolean"
-                },
-                "template": {
-                    "type": "string"
-                },
-                "type": {
-                    "const": "deb",
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                }
-            },
-            "required": [
-                "component",
-                "dist",
-                "pkg",
-                "type",
-                "url"
-            ],
-            "type": "object"
-        },
-        "PreaurDummyPackage": {
-            "additionalProperties": false,
-            "properties": {
-                "dummy": {
-                    "type": "string"
-                },
-                "epoch": {
-                    "type": [
-                        "string",
-                        "number"
-                    ]
-                },
-                "files": {
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                },
-                "pkgrel": {
-                    "type": [
-                        "string",
-                        "number"
-                    ]
-                },
-                "pkgver": {
-                    "type": [
-                        "string",
-                        "number"
-                    ]
-                }
-            },
-            "required": [
-                "dummy"
-            ],
-            "type": "object"
-        },
-        "PreaurGitHubChecker": {
-            "additionalProperties": false,
-            "properties": {
-                "normalize": {
-                    "type": "boolean"
-                },
-                "prefix": {
-                    "type": "string"
-                },
-                "repo": {
-                    "type": "string"
-                },
-                "strip_version": {
-                    "type": "boolean"
-                },
-                "suffix": {
-                    "type": "string"
-                },
-                "template": {
-                    "type": "string"
-                },
-                "type": {
-                    "const": "github",
-                    "type": "string"
-                },
-                "use": {
-                    "type": "string"
-                }
-            },
-            "required": [
-                "repo",
-                "type"
-            ],
-            "type": "object"
-        },
-        "PreaurMaintainer": {
-            "additionalProperties": false,
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                }
-            },
-            "required": [
-                "email",
-                "id",
-                "name"
-            ],
-            "type": "object"
-        },
-        "PreaurPackage": {
-            "additionalProperties": false,
-            "properties": {
-                "allow_orphan_package_build": {
-                    "type": "boolean"
-                },
-                "aur_pkgname": {
-                    "type": "string"
-                },
-                "builder": {
-                    "type": "string"
-                },
-                "checker": {
-                    "anyOf": [
-                        {
-                            "$ref": "#/definitions/PreaurGitHubChecker"
-                        },
-                        {
-                            "$ref": "#/definitions/PreaurDebChecker"
-                        },
-                        {
-                            "$ref": "#/definitions/PreaurRpmChecker"
-                        }
-                    ]
-                },
-                "dummy_packages": {
-                    "items": {
-                        "$ref": "#/definitions/PreaurDummyPackage"
-                    },
-                    "type": "array"
-                },
-                "git": {
-                    "type": "string"
-                },
-                "maintainer": {
-                    "type": "string"
-                },
-                "pkgname": {
-                    "type": "string"
-                },
-                "pre-build-packages": {
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                },
-                "pre-build-scripts": {
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                },
-                "pre_build_packages": {
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                },
-                "pre_build_scripts": {
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                },
-                "push": {
-                    "type": "boolean"
-                },
-                "repo_packages": {
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                }
-            },
-            "required": [
-                "pkgname"
-            ],
-            "type": "object"
-        },
-        "PreaurProjectGitConfig": {
-            "additionalProperties": false,
-            "properties": {
-                "branch": {
-                    "type": "string"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "push": {
-                    "$ref": "#/definitions/PreaurProjectGitPushConfig"
-                },
-                "remote": {
-                    "type": "string"
-                },
-                "sync": {
-                    "$ref": "#/definitions/PreaurProjectGitSyncConfig"
-                }
-            },
-            "type": "object"
-        },
-        "PreaurProjectGitPushConfig": {
-            "additionalProperties": false,
-            "properties": {
-                "force": {
-                    "type": "boolean"
-                }
-            },
-            "type": "object"
-        },
-        "PreaurProjectGitSyncConfig": {
-            "additionalProperties": false,
-            "properties": {
-                "allowRemoteOverwriteLocal": {
-                    "type": "boolean"
-                },
-                "allow_remote_overwrite_local": {
-                    "type": "boolean"
-                }
-            },
-            "type": "object"
-        },
-        "PreaurRepo": {
-            "additionalProperties": false,
-            "properties": {
-                "name": {
-                    "type": "string"
-                }
-            },
-            "required": [
-                "name"
-            ],
-            "type": "object"
-        },
-        "PreaurResources": {
-            "additionalProperties": false,
-            "properties": {
-                "cpu": {
-                    "type": "string"
-                },
-                "parallel": {
-                    "type": "number"
-                },
-                "updateCheckCocurrent": {
-                    "type": "number"
-                }
-            },
-            "required": [
-                "parallel",
-                "updateCheckCocurrent"
-            ],
-            "type": "object"
-        },
-        "PreaurRpmChecker": {
-            "additionalProperties": false,
-            "properties": {
-                "normalize": {
-                    "type": "boolean"
-                },
-                "pkg": {
-                    "type": "string"
-                },
-                "strip_version": {
-                    "type": "boolean"
-                },
-                "template": {
-                    "type": "string"
-                },
-                "type": {
-                    "const": "rpm",
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                }
-            },
-            "required": [
-                "pkg",
-                "type",
-                "url"
-            ],
-            "type": "object"
-        },
-        "PreaurRuntimeConfig": {
-            "additionalProperties": false,
-            "properties": {
-                "chrootPacman": {
-                    "$ref": "#/definitions/PreaurChrootPacmanConfig"
-                },
-                "pkgbuildParser": {
-                    "enum": [
-                        "makepkg",
-                        "native"
-                    ],
-                    "type": "string"
-                },
-                "trustedAurGitPrefixes": {
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                }
-            },
-            "type": "object"
-        }
-    },
+    "type": "object",
     "properties": {
-        "config": {
-            "$ref": "#/definitions/PreaurRuntimeConfig"
+        "maintainers": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "Stable maintainer id used by packages."
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Maintainer display name."
+                    },
+                    "email": {
+                        "type": "string",
+                        "description": "Maintainer email address."
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "email"
+                ],
+                "additionalProperties": false,
+                "description": "A packager identity."
+            },
+            "description": "Known PreAUR maintainers."
         },
         "default_maintainer": {
+            "description": "Maintainer id used when a package omits maintainer.",
             "type": "string"
         },
         "git": {
-            "$ref": "#/definitions/PreaurProjectGitConfig"
-        },
-        "maintainers": {
-            "items": {
-                "$ref": "#/definitions/PreaurMaintainer"
+            "description": "Project repository automation.",
+            "default": {},
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "default": true,
+                    "description": "Enable project git automation.",
+                    "type": "boolean"
+                },
+                "remote": {
+                    "default": "origin",
+                    "description": "Remote used for sync and push.",
+                    "type": "string"
+                },
+                "branch": {
+                    "description": "Branch used for sync and push. Default: current branch.",
+                    "type": "string"
+                },
+                "sync": {
+                    "description": "Project git startup sync policy.",
+                    "default": {},
+                    "type": "object",
+                    "properties": {
+                        "allow_remote_overwrite_local": {
+                            "default": false,
+                            "description": "Reset local state to remote during sync.",
+                            "type": "boolean"
+                        },
+                        "allowRemoteOverwriteLocal": {
+                            "description": "CamelCase alias for allow_remote_overwrite_local.",
+                            "type": "boolean"
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "push": {
+                    "description": "Project git push policy.",
+                    "default": {},
+                    "type": "object",
+                    "properties": {
+                        "force": {
+                            "default": false,
+                            "description": "Use git push --force after builds.",
+                            "type": "boolean"
+                        }
+                    },
+                    "additionalProperties": false
+                }
             },
-            "type": "array"
+            "additionalProperties": false
         },
-        "packages": {
-            "items": {
-                "$ref": "#/definitions/PreaurPackage"
+        "config": {
+            "type": "object",
+            "properties": {
+                "pkgbuildParser": {
+                    "description": "PKGBUILD parser implementation.",
+                    "type": "string",
+                    "enum": [
+                        "native",
+                        "makepkg"
+                    ]
+                },
+                "trustedAurGitPrefixes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Git URL prefixes treated as AUR package sources."
+                },
+                "chrootPacman": {
+                    "type": "object",
+                    "properties": {
+                        "include": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "Host files included into generated pacman.conf."
+                        },
+                        "lines": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "Raw pacman.conf lines appended globally."
+                        },
+                        "repositories": {
+                            "description": "Custom chroot pacman repositories.",
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "Pacman repository name."
+                                    },
+                                    "siglevel": {
+                                        "description": "Repository SigLevel line.",
+                                        "anyOf": [
+                                            {
+                                                "type": "string"
+                                            },
+                                            {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        ]
+                                    },
+                                    "include": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Host files included into this repository block."
+                                    },
+                                    "lines": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Raw pacman.conf lines appended to this repository block."
+                                    }
+                                },
+                                "required": [
+                                    "name"
+                                ],
+                                "additionalProperties": false,
+                                "description": "A custom pacman repository for chroot builds."
+                            }
+                        }
+                    },
+                    "additionalProperties": false,
+                    "description": "Pacman configuration added to devtools chroots."
+                }
             },
-            "type": "array"
-        },
-        "repo": {
-            "$ref": "#/definitions/PreaurRepo"
+            "additionalProperties": false,
+            "description": "Runtime behavior settings."
         },
         "resources": {
-            "$ref": "#/definitions/PreaurResources"
+            "description": "Build and check concurrency settings.",
+            "default": {},
+            "type": "object",
+            "properties": {
+                "cpu": {
+                    "description": "CPU allocation passed to builders.",
+                    "type": "string"
+                },
+                "parallel": {
+                    "default": 2,
+                    "description": "Concurrent package builds.",
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                },
+                "updateCheckCocurrent": {
+                    "default": 1,
+                    "description": "Concurrent version checks.",
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                }
+            },
+            "additionalProperties": false
+        },
+        "repo": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Local pacman repository name."
+                }
+            },
+            "required": [
+                "name"
+            ],
+            "additionalProperties": false,
+            "description": "Local pacman repository settings."
+        },
+        "packages": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "pkgname": {
+                        "type": "string",
+                        "description": "Local package name."
+                    },
+                    "maintainer": {
+                        "description": "Maintainer id. Defaults to default_maintainer.",
+                        "type": "string"
+                    },
+                    "allow_orphan_package_build": {
+                        "description": "Allow building an orphan AUR package.",
+                        "type": "boolean"
+                    },
+                    "aur_pkgname": {
+                        "description": "AUR package name when it differs from pkgname.",
+                        "type": "string"
+                    },
+                    "git": {
+                        "description": "Package PKGBUILD git URL override.",
+                        "type": "string"
+                    },
+                    "checker": {
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "strip_version": {
+                                        "description": "Strip common version prefixes before comparison.",
+                                        "type": "boolean"
+                                    },
+                                    "normalize": {
+                                        "description": "Normalize upstream version text.",
+                                        "type": "boolean"
+                                    },
+                                    "template": {
+                                        "description": "Template mapping upstream version text to PKGBUILD variables.",
+                                        "type": "string"
+                                    },
+                                    "type": {
+                                        "type": "string",
+                                        "const": "github",
+                                        "description": "Use GitHub release data."
+                                    },
+                                    "repo": {
+                                        "type": "string",
+                                        "description": "GitHub repository as owner/name."
+                                    },
+                                    "use": {
+                                        "description": "Release selector such as release or prerelease.",
+                                        "type": "string"
+                                    },
+                                    "prefix": {
+                                        "description": "Version tag prefix to strip.",
+                                        "type": "string"
+                                    },
+                                    "suffix": {
+                                        "description": "Version tag suffix to strip.",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "type",
+                                    "repo"
+                                ],
+                                "additionalProperties": false,
+                                "description": "GitHub version checker."
+                            },
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "strip_version": {
+                                        "description": "Strip common version prefixes before comparison.",
+                                        "type": "boolean"
+                                    },
+                                    "normalize": {
+                                        "description": "Normalize upstream version text.",
+                                        "type": "boolean"
+                                    },
+                                    "template": {
+                                        "description": "Template mapping upstream version text to PKGBUILD variables.",
+                                        "type": "string"
+                                    },
+                                    "type": {
+                                        "type": "string",
+                                        "const": "deb",
+                                        "description": "Use a Debian Packages index."
+                                    },
+                                    "url": {
+                                        "type": "string",
+                                        "description": "Repository base URL."
+                                    },
+                                    "pkg": {
+                                        "type": "string",
+                                        "description": "Debian package name."
+                                    },
+                                    "dist": {
+                                        "type": "string",
+                                        "description": "Debian distribution name."
+                                    },
+                                    "component": {
+                                        "type": "string",
+                                        "description": "Debian repository component."
+                                    },
+                                    "arch": {
+                                        "description": "Debian architecture.",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "type",
+                                    "url",
+                                    "pkg",
+                                    "dist",
+                                    "component"
+                                ],
+                                "additionalProperties": false,
+                                "description": "Debian repository version checker."
+                            },
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "strip_version": {
+                                        "description": "Strip common version prefixes before comparison.",
+                                        "type": "boolean"
+                                    },
+                                    "normalize": {
+                                        "description": "Normalize upstream version text.",
+                                        "type": "boolean"
+                                    },
+                                    "template": {
+                                        "description": "Template mapping upstream version text to PKGBUILD variables.",
+                                        "type": "string"
+                                    },
+                                    "type": {
+                                        "type": "string",
+                                        "const": "rpm",
+                                        "description": "Use an RPM repository."
+                                    },
+                                    "url": {
+                                        "type": "string",
+                                        "description": "Repository base URL."
+                                    },
+                                    "pkg": {
+                                        "type": "string",
+                                        "description": "RPM package name."
+                                    }
+                                },
+                                "required": [
+                                    "type",
+                                    "url",
+                                    "pkg"
+                                ],
+                                "additionalProperties": false,
+                                "description": "RPM repository version checker."
+                            }
+                        ],
+                        "description": "Upstream version checker."
+                    },
+                    "builder": {
+                        "description": "Build command such as extra-x86_64-build.",
+                        "type": "string"
+                    },
+                    "push": {
+                        "description": "Push package PKGBUILD changes to AUR on success.",
+                        "type": "boolean"
+                    },
+                    "dummy_packages": {
+                        "description": "Dummy packages installed before build.",
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "dummy": {
+                                    "type": "string",
+                                    "description": "Dummy package name."
+                                },
+                                "epoch": {
+                                    "description": "Dummy package epoch.",
+                                    "anyOf": [
+                                        {
+                                            "type": "string"
+                                        },
+                                        {
+                                            "type": "number"
+                                        }
+                                    ]
+                                },
+                                "pkgver": {
+                                    "description": "Dummy package version.",
+                                    "anyOf": [
+                                        {
+                                            "type": "string"
+                                        },
+                                        {
+                                            "type": "number"
+                                        }
+                                    ]
+                                },
+                                "pkgrel": {
+                                    "description": "Dummy package release.",
+                                    "anyOf": [
+                                        {
+                                            "type": "string"
+                                        },
+                                        {
+                                            "type": "number"
+                                        }
+                                    ]
+                                },
+                                "files": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    },
+                                    "description": "Files provided by the dummy package."
+                                }
+                            },
+                            "required": [
+                                "dummy"
+                            ],
+                            "additionalProperties": false,
+                            "description": "A generated dummy dependency package."
+                        }
+                    },
+                    "repo_packages": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Local repo packages required before this build."
+                    },
+                    "pre-build-packages": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Packages installed in chroot before build."
+                    },
+                    "pre-build-scripts": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Root scripts run in chroot before build."
+                    },
+                    "pre_build_packages": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Alias for pre-build-packages."
+                    },
+                    "pre_build_scripts": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Alias for pre-build-scripts."
+                    }
+                },
+                "required": [
+                    "pkgname"
+                ],
+                "additionalProperties": false,
+                "description": "A package build entry."
+            },
+            "description": "Packages managed by PreAUR."
         }
     },
     "required": [
         "maintainers",
-        "packages",
-        "repo",
-        "resources"
+        "packages"
     ],
-    "type": "object"
+    "additionalProperties": false,
+    "description": "PreAUR configuration file."
 }
-

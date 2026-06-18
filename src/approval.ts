@@ -18,9 +18,9 @@ export interface AurPackageMetadata {
     coMaintainers: string[];
 }
 
-export interface ApprovalCheckResult {
-    buildablePackages: PreaurPackage[];
-    skippedPackages: Array<{ pkg: PreaurPackage; reason: string }>;
+export interface ApprovalCheckResult<TPackage extends PreaurPackage = PreaurPackage> {
+    buildablePackages: TPackage[];
+    skippedPackages: Array<{ pkg: TPackage; reason: string }>;
 }
 
 export type AurMetadataFetcher = (pkgnames: string[]) => Promise<Map<string, AurPackageMetadata>>;
@@ -279,13 +279,13 @@ export async function fetchAurPackageMetadata(pkgnames: string[]): Promise<Map<s
     return metadata;
 }
 
-export async function runApprovalCheck(
-    packages: PreaurPackage[],
+export async function runApprovalCheck<TPackage extends PreaurPackage>(
+    packages: TPackage[],
     versionStore: VersionStore,
     baseDir: string = process.cwd(),
     fetcher: AurMetadataFetcher = fetchAurPackageMetadata,
     trustedAurGitPrefixes: string[] = []
-): Promise<ApprovalCheckResult> {
+): Promise<ApprovalCheckResult<TPackage>> {
     const ApprovalCheckMessager = constructMessager('Approval Check');
     console.log(ApprovalCheckMessager(`Checking AUR ownership metadata for ${packages.length} package(s)...`));
 
@@ -314,8 +314,8 @@ export async function runApprovalCheck(
         : new Map<string, AurPackageMetadata>();
     const unapprovedPackages = new Set<string>();
     const unapprovedMaintainers = new Set<string>();
-    const buildablePackages: PreaurPackage[] = [];
-    const skippedPackages: ApprovalCheckResult['skippedPackages'] = [];
+    const buildablePackages: TPackage[] = [];
+    const skippedPackages: ApprovalCheckResult<TPackage>['skippedPackages'] = [];
 
     for (const pkg of packages) {
         knownPackages.ensure(pkg.pkgname);

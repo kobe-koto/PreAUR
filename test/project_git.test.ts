@@ -74,8 +74,8 @@ describe('ProjectGitManager', () => {
         const manager = new ProjectGitManager(baseDir, git, {
             enabled: true,
             remote: 'origin',
-            sync: {},
-            push: {},
+            sync: { allow_remote_overwrite_local: false },
+            push: { force: false },
         }, 'main');
         await manager.commitDataChanges(before);
 
@@ -103,8 +103,8 @@ describe('ProjectGitManager', () => {
         const manager = new ProjectGitManager(baseDir, git, {
             enabled: true,
             remote: 'origin',
-            sync: {},
-            push: {},
+            sync: { allow_remote_overwrite_local: false },
+            push: { force: false },
         }, 'main');
 
         await saveVersionStoreUpdate(store, 'foo', { pkgver: '1.2.3', pkgrel: 1 }, manager);

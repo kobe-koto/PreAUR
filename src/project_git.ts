@@ -222,8 +222,13 @@ function resolveProjectGitConfig(config: PreaurProjectGitConfig | undefined): Re
         enabled: config?.enabled ?? true,
         remote: config?.remote ?? 'origin',
         branch: config?.branch,
-        sync: config?.sync ?? {},
-        push: config?.push ?? {},
+        sync: {
+            allow_remote_overwrite_local: config?.sync?.allow_remote_overwrite_local ?? false,
+            allowRemoteOverwriteLocal: config?.sync?.allowRemoteOverwriteLocal,
+        },
+        push: {
+            force: config?.push?.force ?? false,
+        },
     };
 }
 

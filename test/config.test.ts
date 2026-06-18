@@ -39,8 +39,12 @@ packages:
         expect(config.git).toMatchObject({
             enabled: true,
             remote: 'origin',
-            sync: {},
-            push: {},
+            sync: { allow_remote_overwrite_local: false },
+            push: { force: false },
+        });
+        expect(config.resources).toEqual({
+            parallel: 2,
+            updateCheckCocurrent: 1,
         });
     });
 
@@ -72,6 +76,21 @@ packages:
             sync: { allow_remote_overwrite_local: true },
             push: { force: true },
         });
+    });
+
+    test('rejects unknown config keys', async () => {
+        const configPath = await writeConfig(`
+unknown: true
+maintainers:
+  - id: johndoe
+    name: John Doe
+    email: john@example.com
+default_maintainer: johndoe
+packages:
+  - pkgname: demo
+`);
+
+        await expect(loadConfig(configPath)).rejects.toThrow(/Unrecognized key/);
     });
 
     test('fills missing package maintainer from default_maintainer', async () => {
