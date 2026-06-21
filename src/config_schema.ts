@@ -49,9 +49,21 @@ const PreaurChrootPacmanSchema = z.object({
     repositories: z.array(PreaurChrootPacmanRepositorySchema).optional().describe('Custom chroot pacman repositories.'),
 }).strict().describe('Pacman configuration added to devtools chroots.');
 
+const PreaurPkgbuildSandboxSchema = z.object({
+    enabled: z.boolean().default(true).describe('Run PKGBUILD metadata commands inside a chroot sandbox.'),
+    root: z.string().optional().describe('Chroot root directory. Defaults to the devtools root derived from the package builder.'),
+    command: z.string().default('systemd-nspawn').describe('Sandbox command used to enter the chroot.'),
+    sudo: z.boolean().default(true).describe('Run the sandbox command through sudo when PreAUR is not root.'),
+    user: z.string().default('preaur').describe('User used inside the chroot for makepkg commands. It is created with the host UID when missing.'),
+    network: z.boolean().default(true).describe('Allow network access inside the PKGBUILD sandbox.'),
+    ephemeral: z.boolean().default(true).describe('Run metadata commands in a temporary chroot copy that is discarded after the command exits.'),
+    initRoot: z.boolean().default(true).describe('Initialize a missing chroot root by running the package builder on a generated safe package.'),
+}).strict().prefault({}).describe('Chroot sandbox used for PKGBUILD metadata commands before building.');
+
 const PreaurRuntimeConfigSchema = z.object({
     pkgbuildParser: z.enum(['native', 'makepkg']).optional().describe('PKGBUILD parser implementation.'),
     trustedAurGitPrefixes: stringList('Git URL prefixes treated as AUR package sources.').optional(),
+    pkgbuildSandbox: PreaurPkgbuildSandboxSchema.optional(),
     chrootPacman: PreaurChrootPacmanSchema.optional(),
 }).strict().describe('Runtime behavior settings.');
 
@@ -136,6 +148,7 @@ export type PreaurRuntimeConfig = z.output<typeof PreaurRuntimeConfigSchema>;
 export type PreaurProjectGitConfig = z.output<typeof PreaurProjectGitSchema>;
 export type PreaurProjectGitSyncConfig = z.output<typeof PreaurProjectGitSyncSchema>;
 export type PreaurProjectGitPushConfig = z.output<typeof PreaurProjectGitPushSchema>;
+export type PreaurPkgbuildSandboxConfig = z.output<typeof PreaurPkgbuildSandboxSchema>;
 export type PreaurChrootPacmanRepository = z.output<typeof PreaurChrootPacmanRepositorySchema>;
 export type PreaurChrootPacmanConfig = z.output<typeof PreaurChrootPacmanSchema>;
 export type PreaurChecker = z.output<typeof PreaurCheckerSchema>;

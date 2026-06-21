@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import type { SimpleGit } from 'simple-git';
 
-import type { PreaurPackage, PreaurRepo } from './config';
+import type { PreaurPackage, PreaurPkgbuildSandboxConfig, PreaurRepo } from './config';
 import type { EnvPairs } from './env';
 import type { CheckerResult } from './checker';
 import { applyVersionTemplate, fetchLatestVersion } from './checker';
@@ -13,6 +13,12 @@ import { ensurePackageCheckWorkDirs, getPackageWorkDirs, packageWorkEnvPairs, ty
 import { formatPacmanVersion, hasPacmanVersion, pacmanVersionChanged } from './pacman_version';
 import { constructMessager } from './logger';
 import { saveVersionStoreUpdate, type ProjectGitManager } from './project_git';
+import {
+    parsePkgBuildInSandbox,
+    resolvePkgbuildSandboxOptions,
+    updateDynamicPkgverInSandbox,
+    updatePkgBuildInSandbox,
+} from './pkgbuild_sandbox';
 import pc from 'picocolors';
 
 export interface PackageBuildPlan {
@@ -69,6 +75,7 @@ export async function runPackageVersionCheck(
         deps?: PackageVersionCheckDeps;
         updateCheckCocurrent?: number;
         projectGit?: ProjectGitManager;
+        pkgbuildSandbox?: PreaurPkgbuildSandboxConfig;
     } = {}
 ): Promise<PackageVersionCheckResult> {
     const {
@@ -79,6 +86,7 @@ export async function runPackageVersionCheck(
         deps = {},
         updateCheckCocurrent = 1,
         projectGit,
+        pkgbuildSandbox,
     } = options;
 
     console.log(UpdateCheckerMessager(`Checking package versions for ${packages.length} package(s) with concurrency of ${updateCheckCocurrent}...`));
@@ -95,6 +103,7 @@ export async function runPackageVersionCheck(
             sessionLogDir,
             deps,
             projectGit,
+            pkgbuildSandbox,
         }).then(result => {
             if ('skipped' in result && result.skipped && result.reason) {
                 console.log(UpdateCheckerMessager(`Package ${pkg.pkgname} skipped, reason: ${result.reason}`))
@@ -123,6 +132,7 @@ async function processPackageVersionCheck(
         sessionLogDir?: string;
         deps: PackageVersionCheckDeps;
         projectGit?: ProjectGitManager;
+        pkgbuildSandbox?: PreaurPkgbuildSandboxConfig;
     }
 ): Promise<PackageBuildPlan | { skipped: true; reason?: string }> {
     const {
@@ -132,13 +142,11 @@ async function processPackageVersionCheck(
         sessionLogDir,
         deps,
         projectGit,
+        pkgbuildSandbox,
     } = options;
 
     const prepare = deps.preparePackageDiff ?? preparePackageDiff;
     const fetchVersion = deps.fetchLatestVersion ?? fetchLatestVersion;
-    const parse = deps.parsePkgBuild ?? parsePkgBuild;
-    const updateDynamic = deps.updateDynamicPkgver ?? updateDynamicPkgver;
-    const updatePkg = deps.updatePkgBuild ?? updatePkgBuild;
     const hasBuilt = deps.hasBuiltPackage ?? hasBuiltPackage;
 
     const pkgMessager = constructMessager('Update Checker', pkg.pkgname);
@@ -169,10 +177,33 @@ async function processPackageVersionCheck(
         }
     }
 
+    const builderType = pkg.builder || 'extra-x86_64-build';
+    const sandbox = deps.parsePkgBuild || deps.updateDynamicPkgver || deps.updatePkgBuild
+        ? undefined
+        : resolvePkgbuildSandboxOptions({ config: pkgbuildSandbox, builder: builderType, workDirs });
+    const parse = deps.parsePkgBuild
+        ?? (sandbox
+            ? ((pkgbuildPath: string, parser: PkgBuildParser = 'native', env?: EnvPairs) => parsePkgBuildInSandbox(pkgbuildPath, parser, env, sandbox, workDirs))
+            : parsePkgBuild);
+    const updateDynamic = deps.updateDynamicPkgver
+        ?? (sandbox
+            ? ((pkgbuildPath: string, env?: EnvPairs) => updateDynamicPkgverInSandbox(pkgbuildPath, env, sandbox, workDirs))
+            : updateDynamicPkgver);
+    const updatePkg = deps.updatePkgBuild
+        ?? (sandbox
+            ? ((
+                pkgname: string,
+                pkgbuildPath: string,
+                updates: Record<string, string>,
+                forceBumpRel: boolean = false,
+                parser: PkgBuildParser = 'native',
+                env?: EnvPairs
+            ) => updatePkgBuildInSandbox(pkgname, pkgbuildPath, updates, forceBumpRel, parser, env, sandbox, workDirs))
+            : updatePkgBuild);
+
     const pkgbuildPath = path.resolve(pkgDir, 'PKGBUILD');
     await updateDynamic(pkgbuildPath, env);
 
-    const builderType = pkg.builder || 'extra-x86_64-build';
     const pkgbuildModified = await updatePkg(pkg.pkgname, pkgbuildPath, templateUpdates, false, pkgbuildParser, env);
     const finalData = await parse(pkgbuildPath, pkgbuildParser, env);
     const localData = versionStore.get(pkg.pkgname);

@@ -112,6 +112,19 @@ export async function parsePkgBuild(pkgbuildPath: string, parser: PkgBuildParser
         : parsePkgBuildNative(pkgbuildPath);
 }
 
+async function updateChecksums(pkgbuildPath: string, env?: EnvPairs): Promise<void> {
+    const pkgMessager = constructMessager('PKGBUILD Updater', path.basename(path.dirname(pkgbuildPath)));
+    try {
+        const pkgbuildDir = path.dirname(pkgbuildPath);
+        await execAsync(shellEnvCommand('updpkgsums', env), {
+            cwd: pkgbuildDir,
+        });
+    } catch (e: any) {
+        console.error(pkgMessager(pc.red(`Failed to run updpkgsums: ${e.message}`)));
+        throw e;
+    }
+}
+
 export async function updateDynamicPkgver(pkgbuildPath: string, env?: EnvPairs): Promise<boolean> {
     const pkgMessager = constructMessager('PKGBUILD Updater', path.basename(path.dirname(pkgbuildPath)));
     const content = await fs.readFile(pkgbuildPath, 'utf8');
@@ -144,11 +157,37 @@ export async function updatePkgBuild(
     parser: PkgBuildParser = 'native',
     env?: EnvPairs
 ): Promise<boolean> {
+    return updatePkgBuildWithOps(
+        pkgname,
+        pkgbuildPath,
+        updates,
+        forceBumpRel,
+        parser,
+        env,
+        {
+            parse: parsePkgBuild,
+            updateChecksums,
+        }
+    );
+}
+
+export async function updatePkgBuildWithOps(
+    pkgname: string,
+    pkgbuildPath: string,
+    updates: Record<string, string>,
+    forceBumpRel: boolean = false,
+    parser: PkgBuildParser = 'native',
+    env: EnvPairs | undefined,
+    ops: {
+        parse: typeof parsePkgBuild;
+        updateChecksums: (pkgbuildPath: string, env?: EnvPairs) => Promise<void>;
+    }
+): Promise<boolean> {
     const pkgMessager = constructMessager('PKGBUILD Updater', pkgname);
     let content = await fs.readFile(pkgbuildPath, 'utf8');
     const originalContent = content;
 
-    const currentData = await parsePkgBuild(pkgbuildPath, parser, env);
+    const currentData = await ops.parse(pkgbuildPath, parser, env);
 
     if (updates.pkgver && currentData.pkgver !== updates.pkgver) {
         console.log(pkgMessager(`Updating pkgver from ${currentData.pkgver} to ${updates.pkgver} (pkgrel=1)`));
@@ -189,17 +228,7 @@ export async function updatePkgBuild(
         await fs.writeFile(pkgbuildPath, content, 'utf8');
     }
 
-    // ALWAYS update checksums
-    try {
-        const pkgbuildDir = path.dirname(pkgbuildPath);
-        // console.log(pkgMessager(`Running updpkgsums in ${pkgbuildDir}...`));
-        await execAsync(shellEnvCommand('updpkgsums', env), {
-            cwd: pkgbuildDir,
-        });
-    } catch (e: any) {
-        console.error(pkgMessager(pc.red(`Failed to run updpkgsums: ${e.message}`)));
-        throw e;
-    }
+    await ops.updateChecksums(pkgbuildPath, env);
 
     return changed;
 }

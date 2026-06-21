@@ -99,6 +99,7 @@ program
                     sessionLogDir: getSessionLogDir(),
                     updateCheckCocurrent: config.resources.updateCheckCocurrent,
                     projectGit,
+                    pkgbuildSandbox: config.config?.pkgbuildSandbox,
                 }
             );
 

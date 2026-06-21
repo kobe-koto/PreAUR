@@ -1,4 +1,4 @@
-.TH PREAUR-CONFIG 5 "" "PreAUR 0.0.5" "File Formats"
+.TH PREAUR-CONFIG 5 "" "PreAUR 0.0.6" "File Formats"
 .SH NAME
 preaur.config.yaml \- PreAUR configuration file
 .SH DESCRIPTION
@@ -82,8 +82,38 @@ Type: native | makepkg. Required: no. PKGBUILD parser implementation.
 .B trustedAurGitPrefixes
 Type: array<string>. Required: no. Git URL prefixes treated as AUR package sources.
 .TP
+.B pkgbuildSandbox
+Type: object. Required: no. Default: {}. Chroot sandbox used for PKGBUILD metadata commands before building.
+.TP
 .B chrootPacman
 Type: object. Required: no. Pacman configuration added to devtools chroots.
+.SS
+config.pkgbuildSandbox
+Chroot sandbox used for PKGBUILD metadata commands before building.
+.TP
+.B enabled
+Type: boolean. Required: no. Default: true. Run PKGBUILD metadata commands inside a chroot sandbox.
+.TP
+.B root
+Type: string. Required: no. Chroot root directory. Defaults to the devtools root derived from the package builder.
+.TP
+.B command
+Type: string. Required: no. Default: "systemd\-nspawn". Sandbox command used to enter the chroot.
+.TP
+.B sudo
+Type: boolean. Required: no. Default: true. Run the sandbox command through sudo when PreAUR is not root.
+.TP
+.B user
+Type: string. Required: no. Default: "preaur". User used inside the chroot for makepkg commands. It is created with the host UID when missing.
+.TP
+.B network
+Type: boolean. Required: no. Default: true. Allow network access inside the PKGBUILD sandbox.
+.TP
+.B ephemeral
+Type: boolean. Required: no. Default: true. Run metadata commands in a temporary chroot copy that is discarded after the command exits.
+.TP
+.B initRoot
+Type: boolean. Required: no. Default: true. Initialize a missing chroot root by running the package builder on a generated safe package.
 .SS
 config.chrootPacman
 Pacman configuration added to devtools chroots.

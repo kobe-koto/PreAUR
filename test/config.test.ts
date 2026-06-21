@@ -174,6 +174,32 @@ packages:
         });
     });
 
+    test('accepts pkgbuild sandbox defaults', async () => {
+        const configPath = await writeConfig(`
+config:
+  pkgbuildSandbox: {}
+maintainers:
+  - id: johndoe
+    name: John Doe
+    email: john@example.com
+default_maintainer: johndoe
+packages:
+  - pkgname: demo
+`);
+
+        const config = await loadConfig(configPath);
+
+        expect(config.config?.pkgbuildSandbox).toEqual({
+            enabled: true,
+            command: 'systemd-nspawn',
+            sudo: true,
+            user: 'preaur',
+            network: true,
+            ephemeral: true,
+            initRoot: true,
+        });
+    });
+
     test('accepts package-level pre-build packages and scripts', async () => {
         const configPath = await writeConfig(`
 maintainers:

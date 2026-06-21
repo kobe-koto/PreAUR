@@ -6,6 +6,23 @@ config:
   # "native" -> fast built-in parser with bash expansion fallback (default)
   # "makepkg" -> use `makepkg --printsrcinfo` for makepkg-compatible parsing
   pkgbuildParser: "native"
+  # PKGBUILD metadata commands run in a chroot sandbox by default. This covers
+  # makepkg --printsrcinfo, dynamic pkgver(), and updpkgsums before the package
+  # enters the real build.
+  pkgbuildSandbox:
+    enabled: true
+    # Defaults to /var/lib/archbuild/<repo>-<arch>/root derived from builder.
+    # root: "/var/lib/archbuild/extra-x86_64/root"
+    command: "systemd-nspawn"
+    sudo: true
+    user: "preaur"
+    network: true
+    # Use systemd-nspawn --ephemeral so metadata commands run in a temporary
+    # chroot copy that is discarded after each command exits.
+    ephemeral: true
+    # If the derived root does not exist, run the package builder on a generated
+    # safe package to let devtools initialize it.
+    initRoot: true
   # Extra git URL prefixes that should still be treated as trusted AUR mirrors
   # for ownership checks. Built-ins:
   # - ssh://aur@aur.archlinux.org/

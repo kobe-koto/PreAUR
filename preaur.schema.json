@@ -104,6 +104,53 @@
                     },
                     "description": "Git URL prefixes treated as AUR package sources."
                 },
+                "pkgbuildSandbox": {
+                    "description": "Chroot sandbox used for PKGBUILD metadata commands before building.",
+                    "default": {},
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "default": true,
+                            "description": "Run PKGBUILD metadata commands inside a chroot sandbox.",
+                            "type": "boolean"
+                        },
+                        "root": {
+                            "description": "Chroot root directory. Defaults to the devtools root derived from the package builder.",
+                            "type": "string"
+                        },
+                        "command": {
+                            "default": "systemd-nspawn",
+                            "description": "Sandbox command used to enter the chroot.",
+                            "type": "string"
+                        },
+                        "sudo": {
+                            "default": true,
+                            "description": "Run the sandbox command through sudo when PreAUR is not root.",
+                            "type": "boolean"
+                        },
+                        "user": {
+                            "default": "preaur",
+                            "description": "User used inside the chroot for makepkg commands. It is created with the host UID when missing.",
+                            "type": "string"
+                        },
+                        "network": {
+                            "default": true,
+                            "description": "Allow network access inside the PKGBUILD sandbox.",
+                            "type": "boolean"
+                        },
+                        "ephemeral": {
+                            "default": true,
+                            "description": "Run metadata commands in a temporary chroot copy that is discarded after the command exits.",
+                            "type": "boolean"
+                        },
+                        "initRoot": {
+                            "default": true,
+                            "description": "Initialize a missing chroot root by running the package builder on a generated safe package.",
+                            "type": "boolean"
+                        }
+                    },
+                    "additionalProperties": false
+                },
                 "chrootPacman": {
                     "type": "object",
                     "properties": {

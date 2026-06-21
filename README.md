@@ -61,6 +61,31 @@ config:
 
 When `chrootPacman` is configured, PreAUR also asks `makechrootpkg` to update the working chroot copy so custom repository databases are synced before dependency installation.
 
+#### PKGBUILD Metadata Sandbox
+
+PreAUR runs PKGBUILD metadata commands in a chroot sandbox by default before the package build starts. This covers `makepkg --printsrcinfo`, dynamic `pkgver()` updates, and `updpkgsums`.
+
+The sandbox uses `systemd-nspawn --ephemeral` by default, so each metadata command runs in a temporary copy of the selected chroot root and that copy is discarded when the command exits.
+
+If the selected chroot root does not exist, PreAUR runs the package builder against a generated safe package so the devtools wrapper can initialize the root before metadata commands run.
+
+By default, the sandbox root is derived from the package builder. For example, `extra-x86_64-build` maps to `/var/lib/archbuild/extra-x86_64/root`. You can override it explicitly:
+
+```yaml
+config:
+  pkgbuildSandbox:
+    enabled: true
+    root: /var/lib/archbuild/extra-x86_64/root
+    command: systemd-nspawn
+    sudo: true
+    user: preaur
+    network: true
+    ephemeral: true
+    initRoot: true
+```
+
+If you use passwordless sudo for scheduled runs, allow the sandbox command as well as the build wrappers.
+
 Packages can also request package-level pre-build setup inside the chroot. `pre-build-packages` are installed before the package build starts, and `pre-build-scripts` run as root in the chroot before the package build starts:
 
 ```yaml
@@ -116,6 +141,7 @@ Run `sudo visudo` and append your privileges:
 ```sudoers
 Defaults:%preaur-build env_keep += "SOURCE_DATE_EPOCH SRCDEST SRCPKGDEST PKGDEST LOGDEST NPROC MAKEFLAGS PACKAGER GNUPGHOME BUILDTOOL"
 %preaur-build ALL=(ALL) NOPASSWD: /usr/bin/extra-x86_64-build, /usr/bin/multilib-build, /usr/bin/pkgctl
+%preaur-build ALL=(ALL) NOPASSWD: /usr/bin/systemd-nspawn
 ```
 
 ### Create user for PreAUR

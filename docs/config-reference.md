@@ -61,7 +61,23 @@ Runtime behavior settings.
 | --- | --- | --- | --- | --- |
 | `pkgbuildParser` | no | native \| makepkg |  | PKGBUILD parser implementation. |
 | `trustedAurGitPrefixes` | no | array<string> |  | Git URL prefixes treated as AUR package sources. |
+| `pkgbuildSandbox` | no | object | {} | Chroot sandbox used for PKGBUILD metadata commands before building. |
 | `chrootPacman` | no | object |  | Pacman configuration added to devtools chroots. |
+
+#### config.pkgbuildSandbox
+
+Chroot sandbox used for PKGBUILD metadata commands before building.
+
+| Key | Required | Type | Default | Description |
+| --- | --- | --- | --- | --- |
+| `enabled` | no | boolean | true | Run PKGBUILD metadata commands inside a chroot sandbox. |
+| `root` | no | string |  | Chroot root directory. Defaults to the devtools root derived from the package builder. |
+| `command` | no | string | "systemd-nspawn" | Sandbox command used to enter the chroot. |
+| `sudo` | no | boolean | true | Run the sandbox command through sudo when PreAUR is not root. |
+| `user` | no | string | "preaur" | User used inside the chroot for makepkg commands. It is created with the host UID when missing. |
+| `network` | no | boolean | true | Allow network access inside the PKGBUILD sandbox. |
+| `ephemeral` | no | boolean | true | Run metadata commands in a temporary chroot copy that is discarded after the command exits. |
+| `initRoot` | no | boolean | true | Initialize a missing chroot root by running the package builder on a generated safe package. |
 
 #### config.chrootPacman
 
