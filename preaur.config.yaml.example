@@ -23,6 +23,10 @@ config:
     # If the derived root does not exist, run the package builder on a generated
     # safe package to let devtools initialize it.
     initRoot: true
+    # Extra tools needed by metadata commands. PreAUR automatically installs
+    # pacman-contrib and git before running updpkgsums.
+    # packages:
+    #   - git
   # Extra git URL prefixes that should still be treated as trusted AUR mirrors
   # for ownership checks. Built-ins:
   # - ssh://aur@aur.archlinux.org/

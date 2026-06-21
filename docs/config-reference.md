@@ -78,6 +78,7 @@ Chroot sandbox used for PKGBUILD metadata commands before building.
 | `network` | no | boolean | true | Allow network access inside the PKGBUILD sandbox. |
 | `ephemeral` | no | boolean | true | Run metadata commands in a temporary chroot copy that is discarded after the command exits. |
 | `initRoot` | no | boolean | true | Initialize a missing chroot root by running the package builder on a generated safe package. |
+| `packages` | no | array<string> | [] | Extra packages installed in the temporary metadata chroot before running PKGBUILD commands. |
 
 #### config.chrootPacman
 

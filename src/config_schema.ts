@@ -58,6 +58,7 @@ const PreaurPkgbuildSandboxSchema = z.object({
     network: z.boolean().default(true).describe('Allow network access inside the PKGBUILD sandbox.'),
     ephemeral: z.boolean().default(true).describe('Run metadata commands in a temporary chroot copy that is discarded after the command exits.'),
     initRoot: z.boolean().default(true).describe('Initialize a missing chroot root by running the package builder on a generated safe package.'),
+    packages: stringList('Extra packages installed in the temporary metadata chroot before running PKGBUILD commands.').default([]),
 }).strict().prefault({}).describe('Chroot sandbox used for PKGBUILD metadata commands before building.');
 
 const PreaurRuntimeConfigSchema = z.object({

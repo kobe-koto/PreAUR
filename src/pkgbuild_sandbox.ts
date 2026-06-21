@@ -14,6 +14,9 @@ const SANDBOX_PKG_DIR = '/mnt/preaur-pkg';
 const DEFAULT_SANDBOX_COMMAND = 'systemd-nspawn';
 const DEFAULT_SANDBOX_USER = 'preaur';
 const INIT_PKG_NAME = 'preaur-chroot-init';
+const VERSION_OUTPUT_BEGIN = '__PREAUR_VERSION_BEGIN__';
+const VERSION_OUTPUT_END = '__PREAUR_VERSION_END__';
+const UPDPKGSUMS_PACKAGES = ['pacman-contrib', 'git'];
 
 const PkgbuildSandboxMessager = constructMessager('PKGBUILD Sandbox');
 const chrootInitLocks = new Map<string, Promise<void>>();
@@ -33,6 +36,7 @@ export interface ResolvedPkgbuildSandboxOptions {
     network: boolean;
     ephemeral: boolean;
     initRoot: boolean;
+    packages: string[];
     builder: string;
 }
 
@@ -49,6 +53,7 @@ interface SandboxRunOptions {
     workDirs: PackageWorkDirs;
     command: string;
     captureStdout?: boolean;
+    packages?: string[];
 }
 
 export function resolvePkgbuildSandboxOptions(options: PkgbuildSandboxOptions): ResolvedPkgbuildSandboxOptions | undefined {
@@ -69,6 +74,7 @@ export function resolvePkgbuildSandboxOptions(options: PkgbuildSandboxOptions): 
         network: options.config?.network ?? true,
         ephemeral: options.config?.ephemeral ?? true,
         initRoot: options.config?.initRoot ?? true,
+        packages: options.config?.packages ?? [],
         builder: options.builder,
     };
 }
@@ -103,7 +109,7 @@ export async function parsePkgBuildInSandbox(
         return parseSrcInfoVersion(stdout);
     }
 
-    const script = `export CARCH="$(uname -m)"; source ./PKGBUILD >/dev/null 2>&1; printf '%s\\n%s\\n%s\\n' "\${epoch-}" "\${pkgver-}" "\${pkgrel-}"`;
+    const script = `export CARCH="$(uname -m)"; source ./PKGBUILD >/dev/null 2>&1; printf '%s\\n%s\\n%s\\n%s\\n%s\\n' ${shellQuote(VERSION_OUTPUT_BEGIN)} "\${epoch-}" "\${pkgver-}" "\${pkgrel-}" ${shellQuote(VERSION_OUTPUT_END)}`;
     const stdout = await runSandboxCommand({
         pkgbuildPath,
         env,
@@ -112,23 +118,7 @@ export async function parsePkgBuildInSandbox(
         command: `bash -lc ${shellQuote(script)}`,
         captureStdout: true,
     });
-    const [epoch = '', pkgver = '', pkgrel = ''] = stdout.split('\n');
-
-    const parsedPkgrel = parseInt(pkgrel.trim(), 10);
-    if (isNaN(parsedPkgrel)) {
-        throw new Error(`Could not parse pkgrel from sandbox PKGBUILD evaluation (got "${pkgrel.trim()}")`);
-    }
-
-    const parsedEpoch = epoch.trim() ? parseInt(epoch.trim(), 10) : 0;
-    if (isNaN(parsedEpoch) || parsedEpoch < 0) {
-        throw new Error(`Could not parse epoch from sandbox PKGBUILD evaluation (got "${epoch.trim()}")`);
-    }
-
-    if (!pkgver.trim()) {
-        throw new Error('Could not parse pkgver from sandbox PKGBUILD evaluation');
-    }
-
-    return { epoch: parsedEpoch, pkgver: pkgver.trim(), pkgrel: parsedPkgrel };
+    return parseSandboxVersionOutput(stdout);
 }
 
 export async function updateDynamicPkgverInSandbox(
@@ -179,6 +169,7 @@ export async function updatePkgBuildInSandbox(
                 sandbox,
                 workDirs,
                 command: 'updpkgsums',
+                packages: UPDPKGSUMS_PACKAGES,
             }).then(() => undefined),
         }
     );
@@ -197,17 +188,63 @@ function parseSrcInfoVersion(stdout: string): PkgBuildData {
         throw new Error('Could not parse pkgver or pkgrel from sandbox makepkg --printsrcinfo');
     }
 
-    const pkgrel = parseInt(fields.pkgrel, 10);
-    if (isNaN(pkgrel)) {
-        throw new Error(`Could not parse pkgrel from sandbox makepkg --printsrcinfo (got "${fields.pkgrel}")`);
-    }
-
-    const epoch = fields.epoch ? parseInt(fields.epoch, 10) : 0;
-    if (isNaN(epoch) || epoch < 0) {
-        throw new Error(`Could not parse epoch from sandbox makepkg --printsrcinfo (got "${fields.epoch}")`);
-    }
+    const pkgrel = parseRequiredNonNegativeInt(fields.pkgrel, 'pkgrel', 'sandbox makepkg --printsrcinfo');
+    const epoch = parseOptionalNonNegativeInt(fields.epoch, 'epoch', 'sandbox makepkg --printsrcinfo');
 
     return { epoch, pkgver: fields.pkgver, pkgrel };
+}
+
+export function parseSandboxVersionOutput(stdout: string): PkgBuildData {
+    const lines = extractVersionOutputLines(stdout);
+    const [epoch = '', pkgver = '', pkgrel = ''] = lines;
+    const parsedPkgrel = parseRequiredNonNegativeInt(pkgrel, 'pkgrel', 'sandbox PKGBUILD evaluation');
+    const parsedEpoch = parseOptionalNonNegativeInt(epoch, 'epoch', 'sandbox PKGBUILD evaluation');
+
+    if (!pkgver.trim()) {
+        throw new Error('Could not parse pkgver from sandbox PKGBUILD evaluation');
+    }
+
+    return { epoch: parsedEpoch, pkgver: pkgver.trim(), pkgrel: parsedPkgrel };
+}
+
+function extractVersionOutputLines(stdout: string): string[] {
+    const beginIndex = stdout.lastIndexOf(VERSION_OUTPUT_BEGIN);
+    if (beginIndex === -1) return stdout.split(/\r?\n/);
+
+    const contentStart = beginIndex + VERSION_OUTPUT_BEGIN.length;
+    const endIndex = stdout.indexOf(VERSION_OUTPUT_END, contentStart);
+    if (endIndex === -1) {
+        throw new Error('Could not parse sandbox PKGBUILD evaluation output: missing end marker');
+    }
+
+    const payload = stdout
+        .slice(contentStart, endIndex)
+        .replace(/^\r?\n/, '')
+        .replace(/\r?\n$/, '');
+
+    return payload.split(/\r?\n/);
+}
+
+function parseRequiredNonNegativeInt(value: string | undefined, field: string, context: string): number {
+    const trimmed = value?.trim() ?? '';
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!trimmed || Number.isNaN(parsed) || parsed < 0) {
+        throw new Error(`Could not parse ${field} from ${context} (got "${trimmed}")`);
+    }
+
+    return parsed;
+}
+
+function parseOptionalNonNegativeInt(value: string | undefined, field: string, context: string): number {
+    const trimmed = value?.trim() ?? '';
+    if (trimmed === '') return 0;
+
+    const parsed = Number.parseInt(trimmed, 10);
+    if (Number.isNaN(parsed) || parsed < 0) {
+        throw new Error(`Could not parse ${field} from ${context} (got "${trimmed}")`);
+    }
+
+    return parsed;
 }
 
 async function runSandboxCommand(options: SandboxRunOptions): Promise<string> {
@@ -255,6 +292,7 @@ export async function buildPkgbuildSandboxCommand(options: SandboxRunOptions): P
     await ensureSandboxEnvDirs(options.env);
 
     const envPairs = sandboxEnvPairs(options.env);
+    const packages = mergePackages(options.sandbox.packages, options.packages);
     const nspawnArgs = [
         '--quiet',
         `--directory=${options.sandbox.root}`,
@@ -268,7 +306,7 @@ export async function buildPkgbuildSandboxCommand(options: SandboxRunOptions): P
         ...(options.sandbox.network ? [] : ['--private-network']),
         '/bin/bash',
         '-lc',
-        sandboxEntrypointCommand(options.sandbox.user, options.command, envPairs),
+        sandboxEntrypointCommand(options.sandbox.user, options.command, envPairs, packages),
     ];
 
     if (shouldUseSudo(options.sandbox)) {
@@ -378,7 +416,7 @@ function shouldUseSudo(sandbox: ResolvedPkgbuildSandboxOptions): boolean {
     return sandbox.sudo && typeof process.getuid === 'function' && process.getuid() !== 0;
 }
 
-function sandboxEntrypointCommand(user: string, command: string, envPairs: EnvPairs): string {
+function sandboxEntrypointCommand(user: string, command: string, envPairs: EnvPairs, packages: string[]): string {
     const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
     const gid = typeof process.getgid === 'function' ? process.getgid() : uid;
     const quotedUser = shellQuote(user);
@@ -390,9 +428,13 @@ function sandboxEntrypointCommand(user: string, command: string, envPairs: EnvPa
         'GNUPGHOME=/tmp/preaur-gnupg',
         ...envAssignments(envPairs),
     ].map(shellQuote).join(' ');
+    const packageInstall = packages.length > 0
+        ? [`pacman -Sy --needed --noconfirm ${packages.map(shellQuote).join(' ')}`]
+        : [];
 
     return [
         'set -e',
+        ...packageInstall,
         `if id -u ${quotedUser} >/dev/null 2>&1; then`,
         `  if [ "$(id -u ${quotedUser})" != "${uid}" ]; then`,
         '    echo "PreAUR sandbox user exists with a different UID; set config.pkgbuildSandbox.user to a free username." >&2',
@@ -405,6 +447,15 @@ function sandboxEntrypointCommand(user: string, command: string, envPairs: EnvPa
         `chown ${uid}:${gid} ${quotedHome} ${quotedGnupgHome} 2>/dev/null || chown ${uid} ${quotedHome} ${quotedGnupgHome}`,
         `runuser -u ${quotedUser} -- env ${commandEnv} bash -lc ${shellQuote(runCommand)}`,
     ].join('\n');
+}
+
+function mergePackages(...groups: Array<string[] | undefined>): string[] {
+    return [...new Set(
+        groups
+            .flatMap(group => group ?? [])
+            .map(item => item.trim())
+            .filter(Boolean)
+    )];
 }
 
 async function ensureSandboxEnvDirs(env: EnvPairs | undefined): Promise<void> {

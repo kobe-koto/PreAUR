@@ -197,6 +197,7 @@ packages:
             network: true,
             ephemeral: true,
             initRoot: true,
+            packages: [],
         });
     });
 

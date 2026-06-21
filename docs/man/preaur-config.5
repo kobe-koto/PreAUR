@@ -114,6 +114,9 @@ Type: boolean. Required: no. Default: true. Run metadata commands in a temporary
 .TP
 .B initRoot
 Type: boolean. Required: no. Default: true. Initialize a missing chroot root by running the package builder on a generated safe package.
+.TP
+.B packages
+Type: array<string>. Required: no. Default: []. Extra packages installed in the temporary metadata chroot before running PKGBUILD commands.
 .SS
 config.chrootPacman
 Pacman configuration added to devtools chroots.

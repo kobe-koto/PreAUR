@@ -147,6 +147,14 @@
                             "default": true,
                             "description": "Initialize a missing chroot root by running the package builder on a generated safe package.",
                             "type": "boolean"
+                        },
+                        "packages": {
+                            "default": [],
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "Extra packages installed in the temporary metadata chroot before running PKGBUILD commands."
                         }
                     },
                     "additionalProperties": false

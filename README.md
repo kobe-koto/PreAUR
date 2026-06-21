@@ -69,6 +69,8 @@ The sandbox uses `systemd-nspawn --ephemeral` by default, so each metadata comma
 
 If the selected chroot root does not exist, PreAUR runs the package builder against a generated safe package so the devtools wrapper can initialize the root before metadata commands run.
 
+PreAUR automatically installs `pacman-contrib` and `git` in the temporary copy before running `updpkgsums`. If metadata commands need extra tools, add them to `pkgbuildSandbox.packages`; they are installed in the temporary copy only.
+
 By default, the sandbox root is derived from the package builder. For example, `extra-x86_64-build` maps to `/var/lib/archbuild/extra-x86_64/root`. You can override it explicitly:
 
 ```yaml
@@ -82,6 +84,8 @@ config:
     network: true
     ephemeral: true
     initRoot: true
+    packages:
+      - git
 ```
 
 If you use passwordless sudo for scheduled runs, allow the sandbox command as well as the build wrappers.
