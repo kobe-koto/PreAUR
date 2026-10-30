@@ -76,6 +76,7 @@ program
             } catch (e) {
                 if (approvalSnapshot) {
                     await projectGit?.commitDataChanges(approvalSnapshot);
+                    await projectGit?.pushIfNeeded();
                 }
                 throw e;
             }
