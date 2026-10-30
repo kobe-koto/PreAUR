@@ -25,6 +25,9 @@ Type: object. Required: no. Default: {}. Build and check concurrency settings.
 .B repo
 Type: object. Required: no. Local pacman repository settings.
 .TP
+.B webhooks
+Type: array<object>. Required: no. Webhook notification endpoints.
+.TP
 .B packages
 Type: array<object>. Required: yes. Packages managed by PreAUR.
 .SS
@@ -162,6 +165,30 @@ Local pacman repository settings.
 .TP
 .B name
 Type: string. Required: yes. Local pacman repository name.
+.SS
+webhooks[]
+A webhook notification endpoint.
+.TP
+.B id
+Type: string. Required: yes. Webhook identifier for logging.
+.TP
+.B url
+Type: string. Required: yes. Webhook endpoint URL. Supports {{variable}} templates.
+.TP
+.B method
+Type: GET | POST. Required: no. HTTP method. Default: POST.
+.TP
+.B headers
+Type: object. Required: no. Custom HTTP headers.
+.TP
+.B payload
+Type: string | object. Required: no. Request payload. Default: {message: <rendered template>}. Supports {{variable}} templates.
+.TP
+.B tags
+Type: array<SESSION_START | SESSION_END | SESSION_FAILED | APPROVAL_NEW_PACKAGE | APPROVAL_NEW_MAINTAINER | APPROVAL_UNAPPROVED | APPROVAL_PASSED | PACKAGE_UPDATED | PACKAGE_NO_UPDATE | BUILD_START | BUILD_SUCCESSFUL | BUILD_FAILED | PUSH_START | PUSH_SUCCESSFUL | PUSH_FAILED>. Required: yes. Event tags this webhook subscribes to.
+.TP
+.B templates
+Type: object. Required: no. Custom message templates for each tag. Uses default templates if omitted.
 .SS
 packages[]
 A package build entry.

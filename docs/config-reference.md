@@ -12,6 +12,7 @@
 | `config` | no | object |  | Runtime behavior settings. |
 | `resources` | no | object | {} | Build and check concurrency settings. |
 | `repo` | no | object |  | Local pacman repository settings. |
+| `webhooks` | no | array<object> |  | Webhook notification endpoints. |
 | `packages` | yes | array<object> |  | Packages managed by PreAUR. |
 
 ### maintainers[]
@@ -118,6 +119,20 @@ Local pacman repository settings.
 | Key | Required | Type | Default | Description |
 | --- | --- | --- | --- | --- |
 | `name` | yes | string |  | Local pacman repository name. |
+
+### webhooks[]
+
+A webhook notification endpoint.
+
+| Key | Required | Type | Default | Description |
+| --- | --- | --- | --- | --- |
+| `id` | yes | string |  | Webhook identifier for logging. |
+| `url` | yes | string |  | Webhook endpoint URL. Supports {{variable}} templates. |
+| `method` | no | GET \| POST |  | HTTP method. Default: POST. |
+| `headers` | no | object |  | Custom HTTP headers. |
+| `payload` | no | string \| object |  | Request payload. Default: {message: <rendered template>}. Supports {{variable}} templates. |
+| `tags` | yes | array<SESSION_START \| SESSION_END \| SESSION_FAILED \| APPROVAL_NEW_PACKAGE \| APPROVAL_NEW_MAINTAINER \| APPROVAL_UNAPPROVED \| APPROVAL_PASSED \| PACKAGE_UPDATED \| PACKAGE_NO_UPDATE \| BUILD_START \| BUILD_SUCCESSFUL \| BUILD_FAILED \| PUSH_START \| PUSH_SUCCESSFUL \| PUSH_FAILED> |  | Event tags this webhook subscribes to. |
+| `templates` | no | object |  | Custom message templates for each tag. Uses default templates if omitted. |
 
 ### packages[]
 

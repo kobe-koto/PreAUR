@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import type { PreaurPackage } from './config';
 import { VersionStore, type VersionInfo } from './version_store';
 import { constructMessager } from './logger';
+import type { WebhookNotifier } from './webhook';
 
 const UNAPPROVED_PREFIX = '!!!';
 const BUILTIN_TRUSTED_AUR_GIT_PREFIXES = [
@@ -86,6 +87,10 @@ export class KnownListStore {
 
     isApproved(value: string): boolean {
         return this.entries.get(value) === true;
+    }
+
+    has(value: string): boolean {
+        return this.entries.has(value);
     }
 }
 
@@ -284,7 +289,8 @@ export async function runApprovalCheck<TPackage extends PreaurPackage>(
     versionStore: VersionStore,
     baseDir: string = process.cwd(),
     fetcher: AurMetadataFetcher = fetchAurPackageMetadata,
-    trustedAurGitPrefixes: string[] = []
+    trustedAurGitPrefixes: string[] = [],
+    webhook?: WebhookNotifier
 ): Promise<ApprovalCheckResult<TPackage>> {
     const ApprovalCheckMessager = constructMessager('Approval Check');
     console.log(ApprovalCheckMessager(`Checking AUR ownership metadata for ${packages.length} package(s)...`));
@@ -318,6 +324,7 @@ export async function runApprovalCheck<TPackage extends PreaurPackage>(
     const skippedPackages: ApprovalCheckResult<TPackage>['skippedPackages'] = [];
 
     for (const pkg of packages) {
+        const isNewPackage = !knownPackages.isApproved(pkg.pkgname) && !versionStore.get(pkg.pkgname);
         knownPackages.ensure(pkg.pkgname);
         const source = sourcesByPackage.get(pkg.pkgname);
 
@@ -341,6 +348,9 @@ export async function runApprovalCheck<TPackage extends PreaurPackage>(
 
             if (!knownPackages.isApproved(pkg.pkgname)) {
                 unapprovedPackages.add(pkg.pkgname);
+                if (isNewPackage) {
+                    await webhook?.notify('APPROVAL_NEW_PACKAGE', { pkgname: pkg.pkgname });
+                }
             }
 
             buildablePackages.push(pkg);
@@ -362,7 +372,11 @@ export async function runApprovalCheck<TPackage extends PreaurPackage>(
             ];
 
             for (const maintainer of maintainers) {
+                const isNewMaintainer = !knownMaintainers.has(maintainer);
                 knownMaintainers.ensure(maintainer);
+                if (isNewMaintainer) {
+                    await webhook?.notify('APPROVAL_NEW_MAINTAINER', { maintainer });
+                }
             }
 
             versionStore.set(pkg.pkgname, {

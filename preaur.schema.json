@@ -270,6 +270,133 @@
             "additionalProperties": false,
             "description": "Local pacman repository settings."
         },
+        "webhooks": {
+            "description": "Webhook notification endpoints.",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "Webhook identifier for logging."
+                    },
+                    "url": {
+                        "type": "string",
+                        "description": "Webhook endpoint URL. Supports {{variable}} templates."
+                    },
+                    "method": {
+                        "description": "HTTP method. Default: POST.",
+                        "type": "string",
+                        "enum": [
+                            "GET",
+                            "POST"
+                        ]
+                    },
+                    "headers": {
+                        "description": "Custom HTTP headers.",
+                        "type": "object",
+                        "propertyNames": {
+                            "type": "string"
+                        },
+                        "additionalProperties": {
+                            "type": "string"
+                        }
+                    },
+                    "payload": {
+                        "description": "Request payload. Default: {message: <rendered template>}. Supports {{variable}} templates.",
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "object",
+                                "propertyNames": {
+                                    "type": "string"
+                                },
+                                "additionalProperties": {}
+                            }
+                        ]
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "SESSION_START",
+                                "SESSION_END",
+                                "SESSION_FAILED",
+                                "APPROVAL_NEW_PACKAGE",
+                                "APPROVAL_NEW_MAINTAINER",
+                                "APPROVAL_UNAPPROVED",
+                                "APPROVAL_PASSED",
+                                "PACKAGE_UPDATED",
+                                "PACKAGE_NO_UPDATE",
+                                "BUILD_START",
+                                "BUILD_SUCCESSFUL",
+                                "BUILD_FAILED",
+                                "PUSH_START",
+                                "PUSH_SUCCESSFUL",
+                                "PUSH_FAILED"
+                            ],
+                            "description": "Webhook event tag."
+                        },
+                        "description": "Event tags this webhook subscribes to."
+                    },
+                    "templates": {
+                        "description": "Custom message templates for each tag. Uses default templates if omitted.",
+                        "type": "object",
+                        "propertyNames": {
+                            "type": "string",
+                            "enum": [
+                                "SESSION_START",
+                                "SESSION_END",
+                                "SESSION_FAILED",
+                                "APPROVAL_NEW_PACKAGE",
+                                "APPROVAL_NEW_MAINTAINER",
+                                "APPROVAL_UNAPPROVED",
+                                "APPROVAL_PASSED",
+                                "PACKAGE_UPDATED",
+                                "PACKAGE_NO_UPDATE",
+                                "BUILD_START",
+                                "BUILD_SUCCESSFUL",
+                                "BUILD_FAILED",
+                                "PUSH_START",
+                                "PUSH_SUCCESSFUL",
+                                "PUSH_FAILED"
+                            ],
+                            "description": "Webhook event tag."
+                        },
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "required": [
+                            "SESSION_START",
+                            "SESSION_END",
+                            "SESSION_FAILED",
+                            "APPROVAL_NEW_PACKAGE",
+                            "APPROVAL_NEW_MAINTAINER",
+                            "APPROVAL_UNAPPROVED",
+                            "APPROVAL_PASSED",
+                            "PACKAGE_UPDATED",
+                            "PACKAGE_NO_UPDATE",
+                            "BUILD_START",
+                            "BUILD_SUCCESSFUL",
+                            "BUILD_FAILED",
+                            "PUSH_START",
+                            "PUSH_SUCCESSFUL",
+                            "PUSH_FAILED"
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "url",
+                    "tags"
+                ],
+                "additionalProperties": false,
+                "description": "A webhook notification endpoint."
+            }
+        },
         "packages": {
             "type": "array",
             "items": {

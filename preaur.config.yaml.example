@@ -41,6 +41,69 @@ maintainers:
 
 default_maintainer: "johndoe"
 
+# Webhook notifications for build progress reporting
+# webhooks:
+#   # Discord webhook example - using direct template in payload
+#   - id: "discord"
+#     url: "https://discord.com/api/webhooks/123456/abcdef"
+#     method: "POST"
+#     payload:
+#       content: "✅ Built {{pkgname}} {{version}} in {{buildTime}}s"
+#     tags:
+#       - BUILD_SUCCESSFUL
+#       - BUILD_FAILED
+#
+#   # Advanced: use {{_rendered}} to reference the rendered template message
+#   - id: "discord-advanced"
+#     url: "https://discord.com/api/webhooks/123456/abcdef"
+#     payload:
+#       embeds:
+#         - title: "PreAUR Build"
+#           description: "{{_rendered}}"
+#           color: 5763719
+#     tags:
+#       - BUILD_SUCCESSFUL
+#     templates:
+#       BUILD_SUCCESSFUL: "✅ Built {{pkgname}} {{version}} in {{buildTime}}s"
+#
+#   # Telegram webhook example
+#   - id: "telegram"
+#     url: "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage"
+#     method: "POST"
+#     payload:
+#       chat_id: "-1001234567890"
+#       text: "{{_rendered}}"
+#       parse_mode: "Markdown"
+#     tags:
+#       - APPROVAL_UNAPPROVED
+#       - PACKAGE_UPDATED
+#     templates:
+#       PACKAGE_UPDATED: "📦 *{{pkgname}}* updated to `{{version}}`"
+#
+#   # Simple HTTP endpoint (uses default payload: {message: <rendered_template>})
+#   - id: "simple"
+#     url: "https://example.com/webhook"
+#     tags:
+#       - BUILD_FAILED
+#
+# Available event tags:
+#   - SESSION_START, SESSION_END, SESSION_FAILED
+#   - APPROVAL_NEW_PACKAGE, APPROVAL_NEW_MAINTAINER, APPROVAL_UNAPPROVED, APPROVAL_PASSED
+#   - PACKAGE_UPDATED, PACKAGE_NO_UPDATE
+#   - BUILD_START, BUILD_SUCCESSFUL, BUILD_FAILED
+#   - PUSH_START, PUSH_SUCCESSFUL, PUSH_FAILED
+#
+# Template variables:
+#   {{pkgname}}, {{version}}, {{pkgver}}, {{pkgrel}}, {{epoch}},
+#   {{maintainer}}, {{reason}}, {{error}}, {{buildTime}}, {{timestamp}}
+#   {{_rendered}} - the rendered template message (use in payload to reference templates)
+#
+# Notes:
+#   - If 'payload' is omitted, defaults to: {message: <rendered_template>}
+#   - Template variables work in: url, payload fields, and custom templates
+#   - {{_rendered}} is special: it contains the already-rendered template for that event
+#   - If 'templates' omits an event, the built-in default template is used
+
 resources:
   # Controls $MAKEFLAGS internally
   # "-2" -> uses (total_cores - 2)

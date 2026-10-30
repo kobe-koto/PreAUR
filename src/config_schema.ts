@@ -1,6 +1,34 @@
 import { z } from 'zod';
 
 const stringList = (description: string) => z.array(z.string()).describe(description);
+
+const PreaurWebhookEventTagSchema = z.enum([
+    'SESSION_START',
+    'SESSION_END',
+    'SESSION_FAILED',
+    'APPROVAL_NEW_PACKAGE',
+    'APPROVAL_NEW_MAINTAINER',
+    'APPROVAL_UNAPPROVED',
+    'APPROVAL_PASSED',
+    'PACKAGE_UPDATED',
+    'PACKAGE_NO_UPDATE',
+    'BUILD_START',
+    'BUILD_SUCCESSFUL',
+    'BUILD_FAILED',
+    'PUSH_START',
+    'PUSH_SUCCESSFUL',
+    'PUSH_FAILED',
+]).describe('Webhook event tag.');
+
+const PreaurWebhookSchema = z.object({
+    id: z.string().describe('Webhook identifier for logging.'),
+    url: z.string().describe('Webhook endpoint URL. Supports {{variable}} templates.'),
+    method: z.enum(['GET', 'POST']).optional().describe('HTTP method. Default: POST.'),
+    headers: z.record(z.string()).optional().describe('Custom HTTP headers.'),
+    payload: z.union([z.string(), z.record(z.any())]).optional().describe('Request payload. Default: {message: <rendered template>}. Supports {{variable}} templates.'),
+    tags: z.array(PreaurWebhookEventTagSchema).describe('Event tags this webhook subscribes to.'),
+    templates: z.record(PreaurWebhookEventTagSchema, z.string()).optional().describe('Custom message templates for each tag. Uses default templates if omitted.'),
+}).strict().describe('A webhook notification endpoint.');
 const versionPart = z.union([z.string(), z.number()]);
 
 const PreaurMaintainerSchema = z.object({
@@ -138,6 +166,7 @@ export const PreaurRawConfigSchema = z.object({
     config: PreaurRuntimeConfigSchema.optional(),
     resources: PreaurResourcesSchema,
     repo: PreaurRepoSchema.optional(),
+    webhooks: z.array(PreaurWebhookSchema).optional().describe('Webhook notification endpoints.'),
     packages: z.array(PreaurPackageSchema).describe('Packages managed by PreAUR.'),
 }).strict().describe('PreAUR configuration file.');
 
@@ -158,3 +187,5 @@ export type PreaurDebChecker = z.output<typeof PreaurDebCheckerSchema>;
 export type PreaurRpmChecker = z.output<typeof PreaurRpmCheckerSchema>;
 export type PreaurDummyPackage = z.output<typeof PreaurDummyPackageSchema>;
 export type PreaurPackage = z.output<typeof PreaurPackageSchema>;
+export type PreaurWebhookConfig = z.output<typeof PreaurWebhookSchema>;
+export type PreaurWebhookEventTag = z.output<typeof PreaurWebhookEventTagSchema>;

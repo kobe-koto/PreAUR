@@ -13,6 +13,7 @@ import { ensurePackageCheckWorkDirs, getPackageWorkDirs, packageWorkEnvPairs, ty
 import { formatPacmanVersion, hasPacmanVersion, pacmanVersionChanged } from './pacman_version';
 import { constructMessager } from './logger';
 import { saveVersionStoreUpdate, type ProjectGitManager } from './project_git';
+import type { WebhookNotifier } from './webhook';
 import {
     parsePkgBuildInSandbox,
     resolvePkgbuildSandboxOptions,
@@ -76,6 +77,7 @@ export async function runPackageVersionCheck(
         updateCheckCocurrent?: number;
         projectGit?: ProjectGitManager;
         pkgbuildSandbox?: PreaurPkgbuildSandboxConfig;
+        webhook?: WebhookNotifier;
     } = {}
 ): Promise<PackageVersionCheckResult> {
     const {
@@ -87,6 +89,7 @@ export async function runPackageVersionCheck(
         updateCheckCocurrent = 1,
         projectGit,
         pkgbuildSandbox,
+        webhook,
     } = options;
 
     console.log(UpdateCheckerMessager(`Checking package versions for ${packages.length} package(s) with concurrency of ${updateCheckCocurrent}...`));
@@ -104,6 +107,7 @@ export async function runPackageVersionCheck(
             deps,
             projectGit,
             pkgbuildSandbox,
+            webhook,
         }).then(result => {
             if ('skipped' in result && result.skipped && result.reason) {
                 console.log(UpdateCheckerMessager(`Package ${pkg.pkgname} skipped, reason: ${result.reason}`))
@@ -133,6 +137,7 @@ async function processPackageVersionCheck(
         deps: PackageVersionCheckDeps;
         projectGit?: ProjectGitManager;
         pkgbuildSandbox?: PreaurPkgbuildSandboxConfig;
+        webhook?: WebhookNotifier;
     }
 ): Promise<PackageBuildPlan | { skipped: true; reason?: string }> {
     const {
@@ -143,6 +148,7 @@ async function processPackageVersionCheck(
         deps,
         projectGit,
         pkgbuildSandbox,
+        webhook,
     } = options;
 
     const prepare = deps.preparePackageDiff ?? preparePackageDiff;
@@ -213,18 +219,28 @@ async function processPackageVersionCheck(
         const alreadyBuilt = await hasBuilt(repo, pkg.pkgname, finalData, baseDir);
         if (alreadyBuilt) {
             await saveVersionStoreUpdate(versionStore, pkg.pkgname, finalData, projectGit);
+            await webhook?.notify('PACKAGE_NO_UPDATE', {
+                pkgname: pkg.pkgname,
+                version: formatPacmanVersion(finalData),
+                reason: 'no stored successful build version but artifact already exists; synced version store',
+            });
             return {
                 skipped: true,
                 reason: `no stored successful build version but artifact already exists; synced version store (${formatPacmanVersion(finalData)})`,
             };
         }
     }
-    
+
     let missingRepoArtifact = false;
     if (!versionChanged) { // version unchanged
         if (repo) {
             const alreadyBuilt = await hasBuilt(repo, pkg.pkgname, finalData, baseDir);
             if (alreadyBuilt) {
+                await webhook?.notify('PACKAGE_NO_UPDATE', {
+                    pkgname: pkg.pkgname,
+                    version: formatPacmanVersion(finalData),
+                    reason: 'version unchanged and artifact already exists',
+                });
                 return {
                     skipped: true,
                     reason: `version unchanged and artifact already exists (${formatPacmanVersion(finalData)})`,
@@ -233,6 +249,11 @@ async function processPackageVersionCheck(
                 missingRepoArtifact = true;
             }
         } else {
+            await webhook?.notify('PACKAGE_NO_UPDATE', {
+                pkgname: pkg.pkgname,
+                version: formatPacmanVersion(finalData),
+                reason: 'version unchanged',
+            });
             return {
                 skipped: true,
                 reason: `version unchanged (${formatPacmanVersion(finalData)})`,
@@ -243,11 +264,25 @@ async function processPackageVersionCheck(
     if (hasPacmanVersion(localData)) {
         if (versionChanged) {
             console.log(pkgMessager(pc.green(`Update detected: ${formatPacmanVersion(localData)} -> ${formatPacmanVersion(finalData)}`)));
+            await webhook?.notify('PACKAGE_UPDATED', {
+                pkgname: pkg.pkgname,
+                version: formatPacmanVersion(finalData),
+                pkgver: finalData.pkgver,
+                pkgrel: String(finalData.pkgrel),
+                epoch: finalData.epoch ? String(finalData.epoch) : undefined,
+            });
         } else if (missingRepoArtifact) {
             console.log(pkgMessager(pc.green(`Rebuild required: repo artifact missing for ${formatPacmanVersion(finalData)}.`)));
         }
     } else {
         console.log(pkgMessager(pc.green(`No stored successful build version; scheduling build for ${formatPacmanVersion(finalData)}.`)));
+        await webhook?.notify('PACKAGE_UPDATED', {
+            pkgname: pkg.pkgname,
+            version: formatPacmanVersion(finalData),
+            pkgver: finalData.pkgver,
+            pkgrel: String(finalData.pkgrel),
+            epoch: finalData.epoch ? String(finalData.epoch) : undefined,
+        });
     }
 
     return {

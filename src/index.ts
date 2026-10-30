@@ -18,6 +18,8 @@ import { runApprovalCheck } from './approval';
 import { runPackageVersionCheck, type PackageBuildPlan } from './package_check';
 import { ensurePackageLogDir } from './workdirs';
 import { ProjectGitManager, saveVersionStoreUpdate } from './project_git';
+import { createWebhookNotifier, type WebhookNotifier } from './webhook';
+import { formatPacmanVersion } from './pacman_version';
 
 declare const VERSION: string;
 let displayVersion;
@@ -38,6 +40,7 @@ program
     .option('-c, --config <path>', 'path to config file', 'preaur.config.yaml')
     .option('-p, --pkg <name>', 'only run for a specific package')
     .action(async (options) => {
+        let webhook: WebhookNotifier | undefined;
         try {
             initMainLogger(process.cwd());
             console.log(PreaurMessager(`Loading config from ${options.config}`));
@@ -49,6 +52,7 @@ program
                 config = await loadConfig(configPath);
             }
             const pkgbuildParser = config.config?.pkgbuildParser || 'native';
+            webhook = createWebhookNotifier(config.webhooks);
 
             const packagesToProcess = options.pkg
                 ? config.packages.filter(p => p.pkgname === options.pkg)
@@ -58,6 +62,8 @@ program
                 console.log(PreaurMessager('No packages to process.'));
                 return;
             }
+
+            await webhook?.notify('SESSION_START');
 
             const versionStore = new VersionStore(process.cwd());
             await versionStore.load();
@@ -70,14 +76,17 @@ program
                     versionStore,
                     process.cwd(),
                     undefined,
-                    config.config?.trustedAurGitPrefixes
+                    config.config?.trustedAurGitPrefixes,
+                    webhook
                 );
                 approvedPackages = approvalResult.buildablePackages;
+                await webhook?.notify('APPROVAL_PASSED');
             } catch (e) {
                 if (approvalSnapshot) {
                     await projectGit?.commitDataChanges(approvalSnapshot);
                     await projectGit?.pushIfNeeded();
                 }
+                await webhook?.notify('APPROVAL_UNAPPROVED');
                 throw e;
             }
             if (approvalSnapshot) {
@@ -101,6 +110,7 @@ program
                     updateCheckCocurrent: config.resources.updateCheckCocurrent,
                     projectGit,
                     pkgbuildSandbox: config.config?.pkgbuildSandbox,
+                    webhook,
                 }
             );
 
@@ -205,6 +215,16 @@ program
                                     ? `PreAUR (on behalf of ${maintainer.name}) <${maintainer.email}>`
                                     : undefined;
 
+                                const buildStartTime = Date.now();
+                                await webhook?.notify('BUILD_START', {
+                                    pkgname: pkg.pkgname,
+                                    version: formatPacmanVersion(finalData),
+                                    pkgver: finalData.pkgver,
+                                    pkgrel: String(finalData.pkgrel),
+                                    epoch: finalData.epoch ? String(finalData.epoch) : undefined,
+                                    maintainer: maintainer?.name,
+                                });
+
                                 try {
                                     await buildPackage({
                                         pkgDir,
@@ -218,6 +238,24 @@ program
                                         chrootPacman: config.config?.chrootPacman,
                                         baseDir: process.cwd(),
                                     });
+
+                                    const buildTime = ((Date.now() - buildStartTime) / 1000).toFixed(1);
+                                    await webhook?.notify('BUILD_SUCCESSFUL', {
+                                        pkgname: pkg.pkgname,
+                                        version: formatPacmanVersion(finalData),
+                                        pkgver: finalData.pkgver,
+                                        pkgrel: String(finalData.pkgrel),
+                                        epoch: finalData.epoch ? String(finalData.epoch) : undefined,
+                                        maintainer: maintainer?.name,
+                                        buildTime: Number(buildTime),
+                                    });
+                                } catch (buildError: any) {
+                                    await webhook?.notify('BUILD_FAILED', {
+                                        pkgname: pkg.pkgname,
+                                        version: formatPacmanVersion(finalData),
+                                        error: buildError.message,
+                                    });
+                                    throw buildError;
                                 } finally {
                                     if (chrootWorker) chrootPool.release(chrootWorker);
                                 }
@@ -226,7 +264,24 @@ program
                                 const hasGitChanges = status.files.length > 0;
 
                                 if ((pkgbuildModified || hasGitChanges) && pkg.push) {
-                                    await commitAndPush(git, pkg.pkgname, finalData.pkgver, true);
+                                    await webhook?.notify('PUSH_START', {
+                                        pkgname: pkg.pkgname,
+                                        version: formatPacmanVersion(finalData),
+                                    });
+
+                                    try {
+                                        await commitAndPush(git, pkg.pkgname, finalData.pkgver, true);
+                                        await webhook?.notify('PUSH_SUCCESSFUL', {
+                                            pkgname: pkg.pkgname,
+                                            version: formatPacmanVersion(finalData),
+                                        });
+                                    } catch (pushError: any) {
+                                        await webhook?.notify('PUSH_FAILED', {
+                                            pkgname: pkg.pkgname,
+                                            error: pushError.message,
+                                        });
+                                        throw pushError;
+                                    }
                                 } else {
                                     console.log(PreaurMessager(`Skipping push phase for ${pkg.pkgname}.`));
                                 }
@@ -267,9 +322,11 @@ program
 
             await projectGit?.pushIfNeeded();
 
+            await webhook?.notify('SESSION_END');
             console.log(PreaurMessager(`\nAll tasks finished.`));
         } catch (err: any) {
             console.error(PreaurMessager(`Fatal Error: ${err.message}`));
+            webhook && await webhook?.notify('SESSION_FAILED', { error: err.message }).catch(() => {});
             process.exit(1);
         }
     });
