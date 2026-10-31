@@ -135,6 +135,45 @@ describe('buildPkgbuildSandboxCommand', () => {
         expect(plan.args.at(-1)).toContain("pacman -Sy --needed --noconfirm 'git' 'pacman-contrib'");
         expect(plan.args.at(-1)?.match(/pacman-contrib/g)?.length).toBe(1);
     });
+
+    test('does not create or bind LOGDEST for metadata commands', async () => {
+        const baseDir = await makeDir('preaur-sandbox-');
+        const root = path.join(baseDir, 'chroot');
+        const pkgDir = path.join(baseDir, 'pkg');
+        const logdest = path.join(baseDir, 'logs', 'session', 'demo');
+        const srcdest = path.join(baseDir, 'work', 'srcdest');
+
+        await fs.mkdir(root, { recursive: true });
+        await fs.mkdir(pkgDir, { recursive: true });
+        await fs.writeFile(path.join(pkgDir, 'PKGBUILD'), 'pkgname=demo\npkgver=1\npkgrel=1\n', 'utf8');
+
+        const plan = await buildPkgbuildSandboxCommand({
+            pkgbuildPath: path.join(pkgDir, 'PKGBUILD'),
+            sandbox: {
+                enabled: true,
+                root,
+                command: 'systemd-nspawn',
+                sudo: false,
+                user: 'preaur',
+                network: true,
+                ephemeral: true,
+                initRoot: false,
+                packages: [],
+                builder: 'extra-x86_64-build',
+            },
+            workDirs: {} as PackageWorkDirs,
+            env: [
+                ['SRCDEST', srcdest],
+                ['LOGDEST', logdest],
+            ],
+            command: 'makepkg --printsrcinfo',
+        });
+
+        await expect(fs.stat(logdest)).rejects.toThrow();
+        expect(plan.args.some(arg => arg.includes('LOGDEST') || arg.includes('preaur-logdest'))).toBe(false);
+        expect(plan.args.at(-1)).not.toContain('LOGDEST');
+        expect(plan.args).toContain('--setenv=SRCDEST=/mnt/preaur-srcdest');
+    });
 });
 
 describe('chroot root initialization', () => {

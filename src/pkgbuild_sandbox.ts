@@ -312,10 +312,14 @@ async function runSandboxCommand(options: SandboxRunOptions): Promise<string> {
 
 export async function buildPkgbuildSandboxCommand(options: SandboxRunOptions): Promise<PkgbuildSandboxCommandPlan> {
     const pkgDir = path.dirname(path.resolve(options.pkgbuildPath));
+    // Metadata commands never run makepkg with --log, so LOGDEST is not needed here.
+    // Dropping it avoids creating per-package log directories for packages that are
+    // only checked and never built; the real build creates it before starting.
+    const env = options.env?.filter(([key]) => key !== 'LOGDEST');
     await ensureSandboxRoot(options.sandbox);
-    await ensureSandboxEnvDirs(options.env);
+    await ensureSandboxEnvDirs(env);
 
-    const envPairs = sandboxEnvPairs(options.env);
+    const envPairs = sandboxEnvPairs(env);
     const packages = mergePackages(options.sandbox.packages, options.packages);
     const nspawnArgs = [
         '--quiet',
@@ -326,7 +330,7 @@ export async function buildPkgbuildSandboxCommand(options: SandboxRunOptions): P
         '--setenv=HOME=/tmp/preaur-home',
         '--setenv=GNUPGHOME=/tmp/preaur-gnupg',
         ...envAssignments(envPairs).map(item => `--setenv=${item}`),
-        ...sandboxEnvBinds(options.env),
+        ...sandboxEnvBinds(env),
         ...(options.sandbox.network ? [] : ['--private-network']),
         '/bin/bash',
         '-lc',
