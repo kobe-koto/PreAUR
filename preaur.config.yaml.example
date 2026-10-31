@@ -137,6 +137,8 @@ packages:
       type: "github" # Version query provider
       repo: "uiriansan/LainGrubTheme"
       use: "release" # Set to 'prerelease' if using beta tags
+      # prefix/suffix also filter: releases whose tag lacks them are skipped, so
+      # monorepos can pick e.g. the newest "app-release-*" tag. Matching text is stripped.
       # prefix: "app-release-" # remove prefix if not needed
       # suffix: "_beta" # remove suffix if not needed
       normalize: true # replace colons :, forward slashes /, hyphens -, or whitespaces with underscores
@@ -192,6 +194,7 @@ packages:
     checker:
       type: deb  
       strip_version: false
+      # template also filters: versions it cannot parse are ignored when picking the latest
       template: '{~pkgver}.{~pkgver}.{~pkgver}.{~pkgver}.{_commit}'
       url: 'https://repository.spotify.com'
       dist: testing 

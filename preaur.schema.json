@@ -436,7 +436,7 @@
                                         "type": "boolean"
                                     },
                                     "template": {
-                                        "description": "Template mapping upstream version text to PKGBUILD variables.",
+                                        "description": "Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.",
                                         "type": "string"
                                     },
                                     "type": {
@@ -453,11 +453,11 @@
                                         "type": "string"
                                     },
                                     "prefix": {
-                                        "description": "Version tag prefix to strip.",
+                                        "description": "Required tag prefix. Releases whose tag lacks it are skipped; it is stripped from the matching tag.",
                                         "type": "string"
                                     },
                                     "suffix": {
-                                        "description": "Version tag suffix to strip.",
+                                        "description": "Required tag suffix. Releases whose tag lacks it are skipped; it is stripped from the matching tag.",
                                         "type": "string"
                                     }
                                 },
@@ -480,7 +480,7 @@
                                         "type": "boolean"
                                     },
                                     "template": {
-                                        "description": "Template mapping upstream version text to PKGBUILD variables.",
+                                        "description": "Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.",
                                         "type": "string"
                                     },
                                     "type": {
@@ -531,7 +531,7 @@
                                         "type": "boolean"
                                     },
                                     "template": {
-                                        "description": "Template mapping upstream version text to PKGBUILD variables.",
+                                        "description": "Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.",
                                         "type": "string"
                                     },
                                     "type": {

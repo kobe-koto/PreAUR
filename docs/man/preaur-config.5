@@ -245,7 +245,7 @@ Type: boolean. Required: no. Strip common version prefixes before comparison.
 Type: boolean. Required: no. Normalize upstream version text.
 .TP
 .B template
-Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables.
+Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.
 .TP
 .B type
 Type: "github". Required: yes. Use GitHub release data.
@@ -257,10 +257,10 @@ Type: string. Required: yes. GitHub repository as owner/name.
 Type: string. Required: no. Release selector such as release or prerelease.
 .TP
 .B prefix
-Type: string. Required: no. Version tag prefix to strip.
+Type: string. Required: no. Required tag prefix. Releases whose tag lacks it are skipped; it is stripped from the matching tag.
 .TP
 .B suffix
-Type: string. Required: no. Version tag suffix to strip.
+Type: string. Required: no. Required tag suffix. Releases whose tag lacks it are skipped; it is stripped from the matching tag.
 .SS
 packages[].checker: deb
 Debian repository version checker.
@@ -272,7 +272,7 @@ Type: boolean. Required: no. Strip common version prefixes before comparison.
 Type: boolean. Required: no. Normalize upstream version text.
 .TP
 .B template
-Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables.
+Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.
 .TP
 .B type
 Type: "deb". Required: yes. Use a Debian Packages index.
@@ -302,7 +302,7 @@ Type: boolean. Required: no. Strip common version prefixes before comparison.
 Type: boolean. Required: no. Normalize upstream version text.
 .TP
 .B template
-Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables.
+Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.
 .TP
 .B type
 Type: "rpm". Required: yes. Use an RPM repository.

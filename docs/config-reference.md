@@ -163,12 +163,12 @@ GitHub version checker.
 | --- | --- | --- | --- | --- |
 | `strip_version` | no | boolean |  | Strip common version prefixes before comparison. |
 | `normalize` | no | boolean |  | Normalize upstream version text. |
-| `template` | no | string |  | Template mapping upstream version text to PKGBUILD variables. |
+| `template` | no | string |  | Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest. |
 | `type` | yes | "github" |  | Use GitHub release data. |
 | `repo` | yes | string |  | GitHub repository as owner/name. |
 | `use` | no | string |  | Release selector such as release or prerelease. |
-| `prefix` | no | string |  | Version tag prefix to strip. |
-| `suffix` | no | string |  | Version tag suffix to strip. |
+| `prefix` | no | string |  | Required tag prefix. Releases whose tag lacks it are skipped; it is stripped from the matching tag. |
+| `suffix` | no | string |  | Required tag suffix. Releases whose tag lacks it are skipped; it is stripped from the matching tag. |
 
 #### packages[].checker: deb
 
@@ -178,7 +178,7 @@ Debian repository version checker.
 | --- | --- | --- | --- | --- |
 | `strip_version` | no | boolean |  | Strip common version prefixes before comparison. |
 | `normalize` | no | boolean |  | Normalize upstream version text. |
-| `template` | no | string |  | Template mapping upstream version text to PKGBUILD variables. |
+| `template` | no | string |  | Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest. |
 | `type` | yes | "deb" |  | Use a Debian Packages index. |
 | `url` | yes | string |  | Repository base URL. |
 | `pkg` | yes | string |  | Debian package name. |
@@ -194,7 +194,7 @@ RPM repository version checker.
 | --- | --- | --- | --- | --- |
 | `strip_version` | no | boolean |  | Strip common version prefixes before comparison. |
 | `normalize` | no | boolean |  | Normalize upstream version text. |
-| `template` | no | string |  | Template mapping upstream version text to PKGBUILD variables. |
+| `template` | no | string |  | Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest. |
 | `type` | yes | "rpm" |  | Use an RPM repository. |
 | `url` | yes | string |  | Repository base URL. |
 | `pkg` | yes | string |  | RPM package name. |

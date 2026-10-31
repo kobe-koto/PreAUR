@@ -99,7 +99,7 @@ const PreaurRuntimeConfigSchema = z.object({
 const PreaurCheckerBaseShape = {
     strip_version: z.boolean().optional().describe('Strip common version prefixes before comparison.'),
     normalize: z.boolean().optional().describe('Normalize upstream version text.'),
-    template: z.string().optional().describe('Template mapping upstream version text to PKGBUILD variables.'),
+    template: z.string().optional().describe('Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.'),
 };
 
 const PreaurGitHubCheckerSchema = z.object({
@@ -107,8 +107,8 @@ const PreaurGitHubCheckerSchema = z.object({
     type: z.literal('github').describe('Use GitHub release data.'),
     repo: z.string().describe('GitHub repository as owner/name.'),
     use: z.string().optional().describe('Release selector such as release or prerelease.'),
-    prefix: z.string().optional().describe('Version tag prefix to strip.'),
-    suffix: z.string().optional().describe('Version tag suffix to strip.'),
+    prefix: z.string().optional().describe('Required tag prefix. Releases whose tag lacks it are skipped; it is stripped from the matching tag.'),
+    suffix: z.string().optional().describe('Required tag suffix. Releases whose tag lacks it are skipped; it is stripped from the matching tag.'),
 }).strict().describe('GitHub version checker.');
 
 const PreaurDebCheckerSchema = z.object({

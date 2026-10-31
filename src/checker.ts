@@ -68,6 +68,82 @@ export interface CheckerResult {
     epoch?: string;
 }
 
+const GITHUB_RELEASES_PER_PAGE = 100;
+const GITHUB_RELEASES_MAX_PAGES = 5;
+
+/** A configured template also acts as a filter: versions it cannot parse are ignored. */
+function matchesTemplate(config: PreaurChecker, version: string): boolean {
+    return !config.template || applyVersionTemplate(config.template, version) !== null;
+}
+
+function applyCommonTransforms(config: PreaurChecker, version: string): string {
+    let result = version;
+    if (config.strip_version) {
+        result = result.split(/[-_]/)[0] || result;
+    }
+    return result;
+}
+
+/**
+ * Turns a GitHub tag into a version, or returns null when the tag is filtered
+ * out by prefix, suffix or template.
+ */
+export function transformGitHubTag(config: PreaurGitHubChecker, tag: string): string | null {
+    let version = tag;
+
+    if (config.prefix) {
+        if (!version.startsWith(config.prefix)) return null;
+        version = version.substring(config.prefix.length);
+    } else {
+        // Typically GitHub tags are "v1.0.0", Arch package versions prefer "1.0.0"
+        version = version.replace(/^v/, '');
+    }
+
+    if (config.suffix) {
+        if (!version.endsWith(config.suffix)) return null;
+        version = version.substring(0, version.length - config.suffix.length);
+    }
+
+    version = applyCommonTransforms(config, version);
+
+    if (config.normalize) {
+        version = version.replace(/[:/\-\s]/g, '_');
+    }
+
+    if (!version || !matchesTemplate(config, version)) return null;
+    return version;
+}
+
+interface VersionCandidate {
+    version: string;
+    epoch?: string;
+}
+
+function isNewerCandidate(candidate: VersionCandidate, current: VersionCandidate | undefined): boolean {
+    if (!current) return true;
+    const cmp = compareVersions(candidate.version, current.version);
+    if (cmp !== 0) return cmp > 0;
+    return !!candidate.epoch && (!current.epoch || parseInt(candidate.epoch, 10) > parseInt(current.epoch, 10));
+}
+
+/** Applies strip_version and template filtering, then picks the newest remaining candidate. */
+export function selectLatestCandidate(config: PreaurChecker, candidates: VersionCandidate[]): CheckerResult | null {
+    let latest: VersionCandidate | undefined;
+    let latestFinal = '';
+
+    for (const candidate of candidates) {
+        const finalVersion = applyCommonTransforms(config, candidate.version);
+        if (!matchesTemplate(config, finalVersion)) continue;
+
+        if (isNewerCandidate(candidate, latest)) {
+            latest = candidate;
+            latestFinal = finalVersion;
+        }
+    }
+
+    return latest ? { version: latestFinal, epoch: latest.epoch } : null;
+}
+
 export interface CheckerProvider<T extends PreaurChecker = PreaurChecker> {
     name: T['type'];
     check(config: T): Promise<CheckerResult>;
@@ -88,45 +164,51 @@ export class GitHubProvider implements CheckerProvider<PreaurGitHubChecker> {
             headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
         }
 
-        const typeFilter = use === 'prerelease' ? 'releases' : 'releases/latest';
-        const url = `https://api.github.com/repos/${repo}/${typeFilter}`;
+        const includePrerelease = use === 'prerelease';
+        const hasFilters = !!(config.prefix || config.suffix || config.template);
 
         try {
-            const response = await axios.get(url, { headers });
+            // Without filters, keep relying on GitHub's own "latest release" designation.
+            if (!includePrerelease && !hasFilters) {
+                const response = await axios.get(`https://api.github.com/repos/${repo}/releases/latest`, { headers });
+                const tag = response.data?.tag_name;
+                if (!tag) {
+                    throw new Error('Could not determine tag_name from GitHub API response');
+                }
 
-            let releaseData = response.data;
-
-            // If asking for prerelease (which queries /releases), find the first prerelease or fallback to latest
-            if (use === 'prerelease' && Array.isArray(releaseData)) {
-                releaseData = releaseData[0]; // The first one is the most recent
+                const version = transformGitHubTag(config, tag);
+                if (!version) {
+                    throw new Error(`Latest release tag ${tag} produced an empty version`);
+                }
+                return { version };
             }
 
-            if (!releaseData || !releaseData.tag_name) {
-                throw new Error('Could not determine tag_name from GitHub API response');
+            // Otherwise walk releases newest-first and take the first one that passes the filters.
+            for (let page = 1; page <= GITHUB_RELEASES_MAX_PAGES; page++) {
+                const response = await axios.get(`https://api.github.com/repos/${repo}/releases`, {
+                    headers,
+                    params: { per_page: GITHUB_RELEASES_PER_PAGE, page },
+                });
+                const releases = Array.isArray(response.data) ? response.data : [];
+
+                for (const release of releases) {
+                    if (release?.draft) continue;
+                    if (release?.prerelease && !includePrerelease) continue;
+                    if (typeof release?.tag_name !== 'string') continue;
+
+                    const version = transformGitHubTag(config, release.tag_name);
+                    if (version) return { version };
+                }
+
+                if (releases.length < GITHUB_RELEASES_PER_PAGE) break;
             }
 
-            let tag = releaseData.tag_name;
-
-            if (config.prefix && tag.startsWith(config.prefix)) {
-                tag = tag.substring(config.prefix.length);
-            } else if (!config.prefix) {
-                // Typically GitHub tags are "v1.0.0", Arch package versions prefer "1.0.0"
-                tag = tag.replace(/^v/, '');
-            }
-
-            if (config.suffix && tag.endsWith(config.suffix)) {
-                tag = tag.substring(0, tag.length - config.suffix.length);
-            }
-
-            if (config.strip_version) {
-                tag = tag.split(/[-_]/)[0] || tag;
-            }
-
-            if (config.normalize) {
-                tag = tag.replace(/[:/\-\s]/g, '_');
-            }
-
-            return { version: tag };
+            const filters = [
+                config.prefix ? `prefix "${config.prefix}"` : '',
+                config.suffix ? `suffix "${config.suffix}"` : '',
+                config.template ? `template "${config.template}"` : '',
+            ].filter(Boolean).join(', ');
+            throw new Error(`No ${includePrerelease ? '' : 'non-prerelease '}GitHub release matched${filters ? ` ${filters}` : ''} in the newest ${GITHUB_RELEASES_PER_PAGE * GITHUB_RELEASES_MAX_PAGES} releases`);
         } catch (error: any) {
             console.error(UpdateCheckerMessager(`Failed to fetch version from GitHub for ${repo}: ${error.message}`));
             throw error;
@@ -167,9 +249,7 @@ export class DebProvider implements CheckerProvider<PreaurDebChecker> {
 
         // Parse Debian Control format
         const blocks = data.split(/\n\s*\n/);
-        let latestVersion = '';
-
-        let latestEpoch: string | undefined = undefined;
+        const candidates: VersionCandidate[] = [];
 
         for (const block of blocks) {
             const pkgMatch = block.match(/^Package:\s*(.+)$/m);
@@ -188,24 +268,20 @@ export class DebProvider implements CheckerProvider<PreaurDebChecker> {
                     // Arch Linux packages usually replace hyphens with underscores
                     // e.g., 1.86.0-1706698114 -> 1.86.0_1706698114
                     version = version.replace(/-/g, '_');
-
-                    if (!latestVersion || compareVersions(version, latestVersion) > 0 || (version === latestVersion && epoch && (!latestEpoch || parseInt(epoch, 10) > parseInt(latestEpoch, 10)))) {
-                        latestVersion = version;
-                        latestEpoch = epoch;
-                    }
+                    candidates.push({ version, epoch });
                 }
             }
         }
 
-        if (latestVersion) {
-            let finalVersion = latestVersion;
-            if (config.strip_version) {
-                finalVersion = finalVersion.split(/[-_]/)[0] || finalVersion;
-            }
-            return { version: finalVersion, epoch: latestEpoch };
+        if (candidates.length === 0) {
+            throw new Error(`Package ${pkg} not found in Debian repository.`);
         }
 
-        throw new Error(`Package ${pkg} not found in Debian repository.`);
+        const latest = selectLatestCandidate(config, candidates);
+        if (!latest) {
+            throw new Error(`No version of ${pkg} in Debian repository matched template "${config.template}".`);
+        }
+        return latest;
     }
 }
 
@@ -248,8 +324,7 @@ export class RpmProvider implements CheckerProvider<PreaurRpmChecker> {
         }
 
         const packageBlocks = primaryXml.split('</package>');
-        let latestVersion = '';
-        let latestEpoch: string | undefined = undefined;
+        const candidates: VersionCandidate[] = [];
 
         const escapedPkg = pkg.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
         const nameRegex = new RegExp(`<name>${escapedPkg}</name>`);
@@ -270,26 +345,22 @@ export class RpmProvider implements CheckerProvider<PreaurRpmChecker> {
                             version += `_${relMatch[1].replace(/-/g, '_')}`;
                         }
                         version = version.replace(/-/g, '_');
-                        let epoch = epochMatch && epochMatch[1] && epochMatch[1] !== '0' ? epochMatch[1] : undefined;
-
-                        if (!latestVersion || compareVersions(version, latestVersion) > 0 || (version === latestVersion && epoch && (!latestEpoch || parseInt(epoch, 10) > parseInt(latestEpoch, 10)))) {
-                            latestVersion = version;
-                            latestEpoch = epoch;
-                        }
+                        const epoch = epochMatch && epochMatch[1] && epochMatch[1] !== '0' ? epochMatch[1] : undefined;
+                        candidates.push({ version, epoch });
                     }
                 }
             }
         }
 
-        if (latestVersion) {
-            let finalVersion = latestVersion;
-            if (config.strip_version) {
-                finalVersion = finalVersion.split(/[-_]/)[0] || finalVersion;
-            }
-            return { version: finalVersion, epoch: latestEpoch };
+        if (candidates.length === 0) {
+            throw new Error(`Package ${pkg} not found in RPM repository.`);
         }
 
-        throw new Error(`Package ${pkg} not found in RPM repository.`);
+        const latest = selectLatestCandidate(config, candidates);
+        if (!latest) {
+            throw new Error(`No version of ${pkg} in RPM repository matched template "${config.template}".`);
+        }
+        return latest;
     }
 }
 
