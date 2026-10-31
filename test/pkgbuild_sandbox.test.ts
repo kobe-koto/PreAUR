@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import {
     buildChrootInitCommand,
     buildPkgbuildSandboxCommand,
+    detectVcsSourcePackages,
     parseSandboxVersionOutput,
     renderChrootInitPkgbuild,
     resolvePkgbuildSandboxOptions,
@@ -152,6 +153,40 @@ describe('chroot root initialization', () => {
         expect(pkgbuild).toContain('pkgname=preaur-chroot-init');
         expect(pkgbuild).toContain('package() {');
         expect(pkgbuild).not.toContain('source=');
+    });
+});
+
+describe('detectVcsSourcePackages', () => {
+    test('detects git from a VCS source fragment', () => {
+        const pkgbuild = [
+            'pkgname=demo-git',
+            'pkgver=r1',
+            'pkgrel=1',
+            "makedepends=('git')",
+            "source=('demo::git+https://example.org/demo.git')",
+            'pkgver() { :; }',
+        ].join('\n');
+        expect(detectVcsSourcePackages(pkgbuild)).toEqual(['git']);
+    });
+
+    test('maps each VCS prefix to its client package', () => {
+        const pkgbuild = [
+            "source=('a::svn+https://x/a' 'b::hg+https://x/b' 'c::bzr+lp:c' 'd::fossil+https://x/d')",
+        ].join('\n');
+        expect(detectVcsSourcePackages(pkgbuild).sort()).toEqual(
+            ['bzr', 'fossil', 'mercurial', 'subversion'].sort()
+        );
+    });
+
+    test('deduplicates repeated VCS prefixes and ignores non-VCS sources', () => {
+        const pkgbuild = [
+            "source=('one::git+https://x/one.git' 'two::git+https://x/two.git' 'https://x/tar.gz')",
+        ].join('\n');
+        expect(detectVcsSourcePackages(pkgbuild)).toEqual(['git']);
+    });
+
+    test('returns nothing for a plain tarball PKGBUILD', () => {
+        expect(detectVcsSourcePackages("source=('https://example.org/demo-1.0.tar.gz')")).toEqual([]);
     });
 });
 

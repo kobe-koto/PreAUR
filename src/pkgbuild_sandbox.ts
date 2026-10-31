@@ -18,6 +18,17 @@ const VERSION_OUTPUT_BEGIN = '__PREAUR_VERSION_BEGIN__';
 const VERSION_OUTPUT_END = '__PREAUR_VERSION_END__';
 const UPDPKGSUMS_PACKAGES = ['pacman-contrib', 'git'];
 
+// makepkg maps VCS source prefixes (e.g. git+https://) to these tools. Because
+// `makepkg -odc` skips dependency checks, the PKGBUILD's makedepends do not get
+// installed, so dynamic pkgver() needs the matching VCS client installed here.
+const VCS_SOURCE_PACKAGES: Record<string, string> = {
+    git: 'git',
+    svn: 'subversion',
+    hg: 'mercurial',
+    bzr: 'bzr',
+    fossil: 'fossil',
+};
+
 const PkgbuildSandboxMessager = constructMessager('PKGBUILD Sandbox');
 const chrootInitLocks = new Map<string, Promise<void>>();
 
@@ -139,9 +150,22 @@ export async function updateDynamicPkgverInSandbox(
         sandbox,
         workDirs,
         command: 'makepkg -odc --noconfirm --skipinteg',
+        packages: detectVcsSourcePackages(content),
     });
 
     return true;
+}
+
+export function detectVcsSourcePackages(pkgbuildContent: string): string[] {
+    const packages = new Set<string>();
+
+    // Match VCS fragments such as git+https://, svn+ssh://, hg+https://.
+    for (const match of pkgbuildContent.matchAll(/\b(git|svn|hg|bzr|fossil)\+/g)) {
+        const pkg = VCS_SOURCE_PACKAGES[match[1]!];
+        if (pkg) packages.add(pkg);
+    }
+
+    return [...packages];
 }
 
 export async function updatePkgBuildInSandbox(
