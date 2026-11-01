@@ -12,6 +12,7 @@ const PreaurWebhookEventTagSchema = z.enum([
     'APPROVAL_PASSED',
     'PACKAGE_UPDATED',
     'PACKAGE_NO_UPDATE',
+    'PACKAGE_CHECK_FAILED',
     'BUILD_START',
     'BUILD_SUCCESSFUL',
     'BUILD_FAILED',

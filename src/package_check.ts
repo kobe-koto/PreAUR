@@ -115,9 +115,11 @@ export async function runPackageVersionCheck(
             } else {
                 buildPlans.push(result as PackageBuildPlan);
             }
-        }).catch(e => {
-            console.error(UpdateCheckerMessager(`Error processing package ${pkg.pkgname}: ${e instanceof Error ? e.message : String(e)}`));
-            skippedPackages.push({ pkg, reason: `error during processing: ${e instanceof Error ? e.message : String(e)}` });
+        }).catch(async e => {
+            const message = e instanceof Error ? e.message : String(e);
+            console.error(UpdateCheckerMessager(`Error processing package ${pkg.pkgname}: ${message}`));
+            skippedPackages.push({ pkg, reason: `error during processing: ${message}` });
+            await webhook?.notify('PACKAGE_CHECK_FAILED', { pkgname: pkg.pkgname, error: message });
         });
     });
 

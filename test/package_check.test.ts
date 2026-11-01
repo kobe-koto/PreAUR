@@ -7,6 +7,7 @@ import { runPackageVersionCheck, type PackageVersionCheckDeps } from '../src/pac
 import type { PreaurPackage } from '../src/config';
 import { envPairsToRecord, type EnvPairs } from '../src/env';
 import { VersionStore } from '../src/version_store';
+import type { WebhookNotifier } from '../src/webhook';
 
 const tmpDirs: string[] = [];
 
@@ -247,5 +248,35 @@ describe('runPackageVersionCheck', () => {
         });
 
         expect(envPairsToRecord(updateEnv ?? []).LOGDEST).toBe(path.join(sessionLogDir, 'demo'));
+    });
+
+    test('notifies PACKAGE_CHECK_FAILED when a package version check throws', async () => {
+        const baseDir = await makeBaseDir();
+        const store = new VersionStore(baseDir);
+        await store.load();
+
+        const events: Array<{ tag: string; context: Record<string, unknown> }> = [];
+        const webhook = {
+            notify: async (tag: string, context: Record<string, unknown> = {}) => {
+                events.push({ tag, context });
+            },
+        } as unknown as WebhookNotifier;
+
+        const deps = makeDeps({ pkgver: '1.0.0', pkgrel: 1 });
+        deps.parsePkgBuild = async () => {
+            throw new Error('sandbox exploded');
+        };
+
+        const result = await runPackageVersionCheck([{ pkgname: 'demo', maintainer: 'preaur-owner' }], store, {
+            baseDir,
+            deps,
+            webhook,
+        });
+
+        expect(result.buildPlans).toEqual([]);
+        expect(result.skippedPackages.map(item => item.reason)).toEqual(['error during processing: sandbox exploded']);
+        expect(events).toEqual([
+            { tag: 'PACKAGE_CHECK_FAILED', context: { pkgname: 'demo', error: 'sandbox exploded' } },
+        ]);
     });
 });

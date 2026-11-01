@@ -29,6 +29,7 @@ const DEFAULT_TEMPLATES: Record<PreaurWebhookEventTag, string> = {
 
     PACKAGE_UPDATED: '🔄 Package {{pkgname}} updated to {{version}}',
     PACKAGE_NO_UPDATE: '⏭️ Package {{pkgname}} skipped: {{reason}}',
+    PACKAGE_CHECK_FAILED: '⚠️ Update check failed: {{pkgname}} - {{error}}',
 
     BUILD_START: '🔨 Building {{pkgname}} {{version}}',
     BUILD_SUCCESSFUL: '✅ Build successful: {{pkgname}} {{version}} ({{buildTime}}s)',

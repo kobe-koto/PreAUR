@@ -131,7 +131,7 @@ A webhook notification endpoint.
 | `method` | no | GET \| POST |  | HTTP method. Default: POST. |
 | `headers` | no | object |  | Custom HTTP headers. |
 | `payload` | no | string \| object |  | Request payload. Default: {message: <rendered template>}. Supports {{variable}} templates. |
-| `tags` | yes | array<SESSION_START \| SESSION_END \| SESSION_FAILED \| APPROVAL_NEW_PACKAGE \| APPROVAL_NEW_MAINTAINER \| APPROVAL_UNAPPROVED \| APPROVAL_PASSED \| PACKAGE_UPDATED \| PACKAGE_NO_UPDATE \| BUILD_START \| BUILD_SUCCESSFUL \| BUILD_FAILED \| PUSH_START \| PUSH_SUCCESSFUL \| PUSH_FAILED> |  | Event tags this webhook subscribes to. |
+| `tags` | yes | array<SESSION_START \| SESSION_END \| SESSION_FAILED \| APPROVAL_NEW_PACKAGE \| APPROVAL_NEW_MAINTAINER \| APPROVAL_UNAPPROVED \| APPROVAL_PASSED \| PACKAGE_UPDATED \| PACKAGE_NO_UPDATE \| PACKAGE_CHECK_FAILED \| BUILD_START \| BUILD_SUCCESSFUL \| BUILD_FAILED \| PUSH_START \| PUSH_SUCCESSFUL \| PUSH_FAILED> |  | Event tags this webhook subscribes to. |
 | `templates` | no | object |  | Custom message templates for each tag. Uses default templates if omitted. |
 
 ### packages[]
