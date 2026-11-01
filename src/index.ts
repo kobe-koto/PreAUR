@@ -96,6 +96,7 @@ program
             if (approvedPackages.length === 0) {
                 console.log(PreaurMessager('No packages are eligible for build after check phase.'));
                 await projectGit?.pushIfNeeded();
+                await webhook?.notify('SESSION_END', { reason: 'no packages eligible for build' });
                 return;
             }
 
@@ -117,6 +118,7 @@ program
             if (buildPlans.length === 0) {
                 console.log(PreaurMessager('No packages have version updates after check phase.'));
                 await projectGit?.pushIfNeeded();
+                await webhook?.notify('SESSION_END', { reason: 'no version updates' });
                 return;
             }
 
@@ -322,7 +324,7 @@ program
 
             await projectGit?.pushIfNeeded();
 
-            await webhook?.notify('SESSION_END');
+            await webhook?.notify('SESSION_END', { reason: 'all builds finished' });
             console.log(PreaurMessager(`\nAll tasks finished.`));
         } catch (err: any) {
             console.error(PreaurMessager(`Fatal Error: ${err.message}`));

@@ -19,7 +19,7 @@ export interface WebhookContext {
 
 const DEFAULT_TEMPLATES: Record<PreaurWebhookEventTag, string> = {
     SESSION_START: '🚀 PreAUR session started',
-    SESSION_END: '✅ PreAUR session completed',
+    SESSION_END: '✅ PreAUR session completed: {{reason}}',
     SESSION_FAILED: '❌ PreAUR session failed: {{error}}',
 
     APPROVAL_NEW_PACKAGE: '📦 New package detected: {{pkgname}}',
