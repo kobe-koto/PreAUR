@@ -133,7 +133,7 @@ Local pacman repository settings.
 | Key | Required | Type | Default | Description |
 | --- | --- | --- | --- | --- |
 | `name` | yes | string |  | Local pacman repository name. |
-| `removeOld` | no | boolean | false | Pass -R to repo-add so the previous package file and its signature are deleted when a different version of the same package name replaces it. Files already missing from the database, packages no longer produced, and leftover -debug packages are not removed. |
+| `removeOld` | no | boolean | false | Pass -R to repo-add so the previous package file and its signature are deleted when a different version of the same package name replaces it. After each repo-add, also repo-remove packages with the same pkgbase that the build no longer produced (dropped split packages, or -debug packages after debug was turned off) and delete their files. Files already missing from the database are not removed. |
 | `removeOrphans` | no | boolean | false | When a package recorded in data/versions.json is no longer in packages, run repo-remove for every database entry built from its pkgbase (split and -debug packages included; <pkgname> and <pkgname>-debug when no entry matches) and delete their package files and signatures before dropping the versions.json entry. Entries already dropped while this was off are not cleaned up. Packages never recorded in versions.json, such as ones added to the repository by hand, are never removed. |
 
 ### webhooks[]

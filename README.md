@@ -297,10 +297,11 @@ repo:
   removeOrphans: true # repo-remove packages that were removed from the config
 ```
 
-With `removeOld`, when a newly built package replaces a different version of the same package name in the database, `repo-add -R` deletes the old package file and its `.sig`. Re-adding the exact same version only prints "already existed" and deletes nothing. It has these limits:
+With `removeOld`, when a newly built package replaces a different version of the same package name in the database, `repo-add -R` deletes the old package file and its `.sig`. Re-adding the exact same version only prints "already existed" and deletes nothing. Also note:
 
-- Files that were already out of the database before you enabled the option are not cleaned up.
-- Packages that are no longer produced (a dropped split package, or `-debug` packages left over after disabling debug) have no new package of the same name to replace them, so they stay.
+- Packages that are no longer produced (a dropped split package, or the `-debug` package after disabling debug) have no new package of the same name to replace them. After `repo-add`, PreAUR removes them with `repo-remove` when their database `%BASE%` matches the package just built, and deletes their files. If that cleanup fails, it is only logged; the build still counts as successful.
+- Files that were already out of the database before you enabled the option are not cleaned up, and neither are entries from a database written without `%BASE%`.
+- If a PKGBUILD changes its pkgbase, packages under the old pkgbase are not removed.
 - Rolling back to an older version needs a rebuild, because the older package file has already been deleted.
 
 ### Packages Removed From the Config

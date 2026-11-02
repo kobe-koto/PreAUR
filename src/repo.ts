@@ -154,6 +154,28 @@ async function addArtifactsToRepository(
         console.error(`[Repo] Failed to update pacman database: ${e.message}`);
         throw e;
     }
+
+    if (repoConfig.removeOld) {
+        await removeStaleSplitPackages(repoConfig.name, repoDir, dbFile, movedFiles);
+    }
+}
+
+/**
+ * After repo-add -R, drop packages of the same pkgbase that this build no
+ * longer produced. The new packages are already in the database, so failures
+ * are logged and not thrown: the build must still count as successful.
+ */
+async function removeStaleSplitPackages(repoName: string, repoDir: string, dbFile: string, movedFiles: string[]): Promise<void> {
+    try {
+        const entries = await readRepoDbEntries(dbFile);
+        const selection = selectStaleSplitPackages(entries, movedFiles.map(file => path.basename(file)));
+        if (selection.dbNames.length === 0) return;
+
+        console.log(`[Repo] Removing packages no longer produced by this build: ${selection.dbNames.join(', ')}`);
+        await applyRepoRemoval(repoName, repoDir, dbFile, selection);
+    } catch (e: any) {
+        console.warn(`[Repo] Failed to remove stale split packages; they stay in the repository: ${e.message}`);
+    }
 }
 
 const SIGNATURE_EXT = '.sig';
@@ -179,7 +201,7 @@ export interface RepoDbEntry {
     filename?: string;
 }
 
-export interface OrphanRepoSelection {
+export interface RepoRemovalSelection {
     /** Names to pass to repo-remove; all are present in the database. */
     dbNames: string[];
     /** %FILENAME% values of the selected database entries. */
@@ -218,7 +240,7 @@ export function selectOrphanRepoPackages(
     entries: RepoDbEntry[],
     targets: OrphanRepoTarget[],
     protection: RepoCleanupProtection
-): OrphanRepoSelection {
+): RepoRemovalSelection {
     const isProtected = (entry: RepoDbEntry) =>
         protection.names.has(entry.name) || (!!entry.base && protection.bases.has(entry.base));
 
@@ -252,6 +274,25 @@ export function selectOrphanRepoPackages(
         dbNames: [...selected.keys()],
         filenames: unique([...selected.values()].map(entry => entry.filename)),
         artifactNames: [...artifactNames],
+    };
+}
+
+/**
+ * Entries left behind by a rebuild: same %BASE% as a package just added, but a
+ * name this build did not produce (a dropped split package, or <pkgbase>-debug
+ * after debug packages were turned off). Entries without %BASE% are ignored.
+ */
+export function selectStaleSplitPackages(entries: RepoDbEntry[], addedFilenames: Iterable<string>): RepoRemovalSelection {
+    const added = new Set(addedFilenames);
+    const addedEntries = entries.filter(entry => entry.filename && added.has(entry.filename));
+    const bases = new Set(addedEntries.map(entry => entry.base).filter((base): base is string => !!base));
+    const addedNames = new Set(addedEntries.map(entry => entry.name));
+    const stale = entries.filter(entry => entry.base && bases.has(entry.base) && !addedNames.has(entry.name));
+
+    return {
+        dbNames: stale.map(entry => entry.name),
+        filenames: unique(stale.map(entry => entry.filename)),
+        artifactNames: stale.map(entry => entry.name),
     };
 }
 
@@ -352,38 +393,52 @@ export async function removeOrphanRepoPackages(
         }
 
         const selection = selectOrphanRepoPackages(entries, targets, protection);
-        if (selection.dbNames.length > 0) {
-            console.log(`[Repo] Running repo-remove ${repoConfig.name}.db.tar.gz ${selection.dbNames.join(' ')}...`);
-            try {
-                await execFileAsync('repo-remove', repoRemoveArgs(dbFile, selection.dbNames), { cwd: repoDir });
-            } catch (e: any) {
-                console.error(`[Repo] Failed to remove packages from pacman database: ${e.message}`);
-                throw e;
-            }
-        }
+        return applyRepoRemoval(repoConfig.name, repoDir, dbFile, selection);
+    });
+}
 
-        let files: string[];
+/**
+ * repo-remove the selected names, then delete the selected package files and
+ * signatures. Throws if repo-remove fails, before any file is deleted. The
+ * caller must hold the repository lock.
+ */
+async function applyRepoRemoval(
+    repoName: string,
+    repoDir: string,
+    dbFile: string,
+    selection: RepoRemovalSelection
+): Promise<OrphanRepoCleanupResult> {
+    if (selection.dbNames.length > 0) {
+        console.log(`[Repo] Running repo-remove ${repoName}.db.tar.gz ${selection.dbNames.join(' ')}...`);
         try {
-            files = await fs.readdir(repoDir);
+            await execFileAsync('repo-remove', repoRemoveArgs(dbFile, selection.dbNames), { cwd: repoDir });
         } catch (e: any) {
-            if (e.code === 'ENOENT') return { removedFromDb: selection.dbNames, deletedFiles: [] };
+            console.error(`[Repo] Failed to remove packages from pacman database: ${e.message}`);
             throw e;
         }
+    }
 
-        const dbFilenames = new Set(selection.filenames);
-        const artifactNames = new Set(selection.artifactNames);
-        const deletedFiles: string[] = [];
-        for (const file of files) {
-            const artifact = file.endsWith(SIGNATURE_EXT) ? file.slice(0, -SIGNATURE_EXT.length) : file;
-            const pkgname = parsePackageArtifactFile(artifact)?.pkgname;
-            const selected = dbFilenames.has(artifact) || (!!pkgname && artifactNames.has(pkgname));
-            if (!selected) continue;
+    let files: string[];
+    try {
+        files = await fs.readdir(repoDir);
+    } catch (e: any) {
+        if (e.code === 'ENOENT') return { removedFromDb: selection.dbNames, deletedFiles: [] };
+        throw e;
+    }
 
-            await fs.rm(path.join(repoDir, file), { force: true });
-            console.log(`[Repo] Deleted ${file}.`);
-            deletedFiles.push(file);
-        }
+    const dbFilenames = new Set(selection.filenames);
+    const artifactNames = new Set(selection.artifactNames);
+    const deletedFiles: string[] = [];
+    for (const file of files) {
+        const artifact = file.endsWith(SIGNATURE_EXT) ? file.slice(0, -SIGNATURE_EXT.length) : file;
+        const pkgname = parsePackageArtifactFile(artifact)?.pkgname;
+        const selected = dbFilenames.has(artifact) || (!!pkgname && artifactNames.has(pkgname));
+        if (!selected) continue;
 
-        return { removedFromDb: selection.dbNames, deletedFiles };
-    });
+        await fs.rm(path.join(repoDir, file), { force: true });
+        console.log(`[Repo] Deleted ${file}.`);
+        deletedFiles.push(file);
+    }
+
+    return { removedFromDb: selection.dbNames, deletedFiles };
 }

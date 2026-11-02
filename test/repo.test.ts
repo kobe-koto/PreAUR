@@ -8,11 +8,13 @@ import {
     orphanBaseCandidates,
     orphanFallbackNames,
     readRepoDbEntries,
+    manageRepository,
     removeOrphanRepoPackages,
     repoAddArgs,
     repoRemoveArgs,
     resolveBuiltPackage,
     selectOrphanRepoPackages,
+    selectStaleSplitPackages,
     withRepoLock,
     type RepoCleanupProtection,
     type RepoDbEntry,
@@ -176,18 +178,22 @@ async function writeRepoDb(dbFile: string, packages: DbPackage[]): Promise<void>
     await fs.writeFile(dbFile, gzipSync(Buffer.concat([...entries, Buffer.alloc(1024, 0)])));
 }
 
-async function installFakeRepoRemove(baseDir: string, exitCode: number): Promise<{ log: string; restore: () => void }> {
+async function installFakeTool(baseDir: string, tool: string, exitCode: number): Promise<{ log: string; restore: () => void }> {
     const binDir = path.join(baseDir, 'bin');
-    const log = path.join(baseDir, 'repo-remove.log');
+    const log = path.join(baseDir, `${tool}.log`);
     await fs.mkdir(binDir, { recursive: true });
     await fs.writeFile(
-        path.join(binDir, 'repo-remove'),
+        path.join(binDir, tool),
         `#!/bin/sh\nprintf '%s\\n' "$@" > '${log}'\nexit ${exitCode}\n`,
         { mode: 0o755 }
     );
     const originalPath = process.env.PATH;
     process.env.PATH = `${binDir}:${originalPath ?? ''}`;
     return { log, restore: () => { process.env.PATH = originalPath; } };
+}
+
+function installFakeRepoRemove(baseDir: string, exitCode: number) {
+    return installFakeTool(baseDir, 'repo-remove', exitCode);
 }
 
 async function makeRepoDir(baseDir: string, files: string[]): Promise<string> {
@@ -404,3 +410,107 @@ describe('removeOrphanRepoPackages', () => {
             .resolves.toEqual({ removedFromDb: [], deletedFiles: [] });
     });
 });
+
+describe('selectStaleSplitPackages', () => {
+    const entry = (name: string, version: string, base?: string): RepoDbEntry => ({
+        name,
+        base,
+        filename: `${name}-${version}-x86_64.pkg.tar.zst`,
+    });
+
+    test('selects same-base packages the build did not produce', () => {
+        const entries = [
+            entry('foo', '2.0-1', 'foo'),
+            entry('foo-debug', '1.0-1', 'foo'),
+            entry('foo-docs', '1.0-1', 'foo'),
+            entry('bar', '1.0-1', 'bar'),
+        ];
+
+        const selection = selectStaleSplitPackages(entries, ['foo-2.0-1-x86_64.pkg.tar.zst']);
+
+        expect(selection.dbNames).toEqual(['foo-debug', 'foo-docs']);
+        expect(selection.artifactNames).toEqual(['foo-debug', 'foo-docs']);
+        expect(selection.filenames).toEqual(['foo-debug-1.0-1-x86_64.pkg.tar.zst', 'foo-docs-1.0-1-x86_64.pkg.tar.zst']);
+    });
+
+    test('keeps everything the build produced', () => {
+        const entries = [entry('foo', '2.0-1', 'foo'), entry('foo-debug', '2.0-1', 'foo')];
+        expect(selectStaleSplitPackages(entries, [
+            'foo-2.0-1-x86_64.pkg.tar.zst',
+            'foo-debug-2.0-1-x86_64.pkg.tar.zst',
+        ]).dbNames).toEqual([]);
+    });
+
+    test('ignores entries without %BASE% and files that are not in the database', () => {
+        const entries = [entry('foo', '2.0-1'), entry('foo-debug', '1.0-1')];
+        expect(selectStaleSplitPackages(entries, ['foo-2.0-1-x86_64.pkg.tar.zst']).dbNames).toEqual([]);
+        expect(selectStaleSplitPackages([entry('foo-debug', '1.0-1', 'foo')], ['foo-2.0-1-x86_64.pkg.tar.zst']).dbNames)
+            .toEqual([]);
+    });
+});
+
+describe('manageRepository stale split packages', () => {
+    // The fake repo-add does not touch the database, so it is written in its post-add state.
+    async function setup(removeRepoRemoveExit: number) {
+        const baseDir = await makeBaseDir();
+        const pkgdest = path.join(baseDir, 'pkgdest');
+        await fs.mkdir(pkgdest, { recursive: true });
+        await fs.writeFile(path.join(pkgdest, 'foo-2.0-1-x86_64.pkg.tar.zst'), '');
+        const repoDir = await makeRepoDir(baseDir, [
+            'foo-debug-1.0-1-x86_64.pkg.tar.zst',
+            'foo-debug-1.0-1-x86_64.pkg.tar.zst.sig',
+            'bar-1.0-1-x86_64.pkg.tar.zst',
+        ]);
+        const dbFile = path.join(repoDir, 'localrepo.db.tar.gz');
+        await writeRepoDb(dbFile, [
+            { name: 'foo', version: '2.0-1', base: 'foo' },
+            { name: 'foo-debug', version: '1.0-1', base: 'foo' },
+            { name: 'bar', version: '1.0-1', base: 'bar' },
+        ]);
+        const repoAdd = await installFakeTool(baseDir, 'repo-add', 0);
+        const repoRemove = await installFakeRepoRemove(baseDir, removeRepoRemoveExit);
+        const restore = () => { repoRemove.restore(); repoAdd.restore(); };
+        return { baseDir, pkgdest, repoDir, dbFile, repoRemove, restore };
+    }
+
+    test('removes same-base packages no longer produced when removeOld is enabled', async () => {
+        const { baseDir, pkgdest, repoDir, dbFile, repoRemove, restore } = await setup(0);
+        try {
+            await manageRepository({ name: 'localrepo', removeOld: true, removeOrphans: false }, pkgdest, baseDir);
+        } finally {
+            restore();
+        }
+
+        expect((await fs.readFile(repoRemove.log, 'utf8')).trim().split('\n')).toEqual([dbFile, 'foo-debug']);
+        expect((await fs.readdir(repoDir)).sort()).toEqual([
+            'bar-1.0-1-x86_64.pkg.tar.zst',
+            'foo-2.0-1-x86_64.pkg.tar.zst',
+            'localrepo.db.tar.gz',
+        ]);
+    });
+
+    test('leaves them alone when removeOld is disabled', async () => {
+        const { baseDir, pkgdest, repoDir, repoRemove, restore } = await setup(0);
+        try {
+            await manageRepository({ name: 'localrepo', removeOld: false, removeOrphans: false }, pkgdest, baseDir);
+        } finally {
+            restore();
+        }
+
+        await expect(fs.access(repoRemove.log)).rejects.toThrow();
+        expect(await fs.readdir(repoDir)).toContain('foo-debug-1.0-1-x86_64.pkg.tar.zst');
+    });
+
+    test('does not fail the repository update when removing stale packages fails', async () => {
+        const { baseDir, pkgdest, repoDir, restore } = await setup(1);
+        try {
+            await expect(manageRepository({ name: 'localrepo', removeOld: true, removeOrphans: false }, pkgdest, baseDir))
+                .resolves.toBeUndefined();
+        } finally {
+            restore();
+        }
+
+        expect(await fs.readdir(repoDir)).toContain('foo-debug-1.0-1-x86_64.pkg.tar.zst.sig');
+    });
+});
+

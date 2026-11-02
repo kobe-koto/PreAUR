@@ -324,7 +324,7 @@
                 },
                 "removeOld": {
                     "default": false,
-                    "description": "Pass -R to repo-add so the previous package file and its signature are deleted when a different version of the same package name replaces it. Files already missing from the database, packages no longer produced, and leftover -debug packages are not removed.",
+                    "description": "Pass -R to repo-add so the previous package file and its signature are deleted when a different version of the same package name replaces it. After each repo-add, also repo-remove packages with the same pkgbase that the build no longer produced (dropped split packages, or -debug packages after debug was turned off) and delete their files. Files already missing from the database are not removed.",
                     "type": "boolean"
                 },
                 "removeOrphans": {
