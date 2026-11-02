@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { hasBuiltPackage, resolveBuiltPackage, withRepoLock } from '../src/repo';
+import { hasBuiltPackage, repoAddArgs, resolveBuiltPackage, withRepoLock } from '../src/repo';
 
 const tmpDirs: string[] = [];
 
@@ -104,5 +104,25 @@ describe('withRepoLock', () => {
     test('releases the lock when the work throws', async () => {
         await expect(withRepoLock(async () => { throw new Error('boom'); })).rejects.toThrow('boom');
         await expect(withRepoLock(async () => 'next')).resolves.toBe('next');
+    });
+});
+
+describe('repoAddArgs', () => {
+    const db = '/srv/my repo/localrepo.db.tar.gz';
+    const files = ['/srv/my repo/foo-1.0-1-x86_64.pkg.tar.zst', '/srv/my repo/foo-debug-1.0-1-x86_64.pkg.tar.zst'];
+
+    test('does not remove old files by default', () => {
+        expect(repoAddArgs(db, files)).toEqual([db, ...files]);
+        expect(repoAddArgs(db, files, { removeOld: false })).toEqual([db, ...files]);
+    });
+
+    test('passes -R before the database when removeOld is enabled', () => {
+        expect(repoAddArgs(db, files, { removeOld: true })).toEqual(['-R', db, ...files]);
+    });
+
+    test('keeps paths with spaces as single arguments', () => {
+        const args = repoAddArgs(db, files);
+        expect(args).toHaveLength(3);
+        expect(args[0]).toBe(db);
     });
 });

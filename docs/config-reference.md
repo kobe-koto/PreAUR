@@ -133,6 +133,7 @@ Local pacman repository settings.
 | Key | Required | Type | Default | Description |
 | --- | --- | --- | --- | --- |
 | `name` | yes | string |  | Local pacman repository name. |
+| `removeOld` | no | boolean | false | Pass -R to repo-add so the previous package file and its signature are deleted when a different version of the same package name replaces it. Files already missing from the database, packages no longer produced, and leftover -debug packages are not removed. |
 
 ### webhooks[]
 

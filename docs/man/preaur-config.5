@@ -189,6 +189,9 @@ Local pacman repository settings.
 .TP
 .B name
 Type: string. Required: yes. Local pacman repository name.
+.TP
+.B removeOld
+Type: boolean. Required: no. Default: false. Pass \-R to repo\-add so the previous package file and its signature are deleted when a different version of the same package name replaces it. Files already missing from the database, packages no longer produced, and leftover \-debug packages are not removed.
 .SS
 webhooks[]
 A webhook notification endpoint.

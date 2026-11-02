@@ -288,8 +288,18 @@ useradd -m -G preaur-build preaur
 
 ## Cleaning Outdated Packages
 
-PreAUR hasn't implemented this feature and likely never will, because removing outdated packages is not the builder's job. 
+By default PreAUR never deletes package files from the local repository. Set `repo.removeOld` to let `repo-add` delete the previous version when a new one replaces it:
 
-You can check out my [archavenger](https://github.com/kobe-koto/archavenger), however.
+```yaml
+repo:
+  name: localrepo
+  removeOld: true # repo-add -R, roughly `paccache -rk1 -c repo/localrepo`
+```
 
-If you don't need automatic removal of orphaned packages (for example, a package you removed from the config), `paccache` is also a good choice.
+With `removeOld`, when a newly built package replaces a different version of the same package name in the database, `repo-add -R` deletes the old package file and its `.sig`. Re-adding the exact same version only prints "already existed" and deletes nothing. It has these limits:
+
+- Files that were already out of the database before you enabled the option are not cleaned up.
+- Packages that are no longer produced (a dropped split package, or `-debug` packages left over after disabling debug) have no new package of the same name to replace them, so they stay.
+- Rolling back to an older version needs a rebuild, because the older package file has already been deleted.
+
+For anything `removeOld` does not cover, `paccache -rk1 -c repo/<name>` works on the repository directory, or check out my [archavenger](https://github.com/kobe-koto/archavenger).

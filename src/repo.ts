@@ -1,5 +1,5 @@
 import * as fs from 'node:fs/promises';
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import type { PreaurRepo } from './config';
@@ -41,7 +41,7 @@ function parsePackageArtifactFile(file: string): { pkgname: string; pkgver: stri
 }
 
 export async function hasBuiltPackage(
-    repoConfig: PreaurRepo,
+    repoConfig: Pick<PreaurRepo, 'name'>,
     pkgname: string,
     version: PacmanVersion,
     baseDir: string = process.cwd()
@@ -60,7 +60,7 @@ export async function hasBuiltPackage(
 }
 
 export async function resolveBuiltPackage(
-    repoConfig: PreaurRepo,
+    repoConfig: Pick<PreaurRepo, 'name'>,
     pkgname: string,
     baseDir: string = process.cwd()
 ): Promise<string> {
@@ -86,7 +86,19 @@ export async function resolveBuiltPackage(
     }
 }
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+export interface RepoAddOptions {
+    removeOld?: boolean;
+}
+
+// repo-add usage: repo-add [options] <path-to-db> <package1> [<package2> ...]
+export function repoAddArgs(dbFile: string, files: string[], opts: RepoAddOptions = {}): string[] {
+    const args: string[] = [];
+    if (opts.removeOld) args.push('-R');
+    args.push(dbFile, ...files);
+    return args;
+}
 
 export async function manageRepository(
     repoConfig: PreaurRepo,
@@ -134,9 +146,8 @@ async function addArtifactsToRepository(
     console.log(`[Repo] Running repo-add ${repoConfig.name}.db.tar.gz...`);
 
     try {
-        // repo-add usage: repo-add [options] <path-to-db> <package1> [<package2> ...]
-        const cmd = `repo-add ${dbFile} ${movedFiles.join(' ')}`;
-        await execAsync(cmd, { cwd: repoDir });
+        const args = repoAddArgs(dbFile, movedFiles, { removeOld: repoConfig.removeOld });
+        await execFileAsync('repo-add', args, { cwd: repoDir });
         console.log(`[Repo] Successfully updated pacman database: ${repoConfig.name}.db.tar.gz`);
     } catch (e: any) {
         console.error(`[Repo] Failed to update pacman database: ${e.message}`);

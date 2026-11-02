@@ -71,7 +71,7 @@ export async function runPackageVersionCheck(
     options: {
         baseDir?: string;
         pkgbuildParser?: PkgBuildParser;
-        repo?: PreaurRepo;
+        repo?: Pick<PreaurRepo, 'name'>;
         sessionLogDir?: string;
         deps?: PackageVersionCheckDeps;
         updateCheckCocurrent?: number;
@@ -134,7 +134,7 @@ async function processPackageVersionCheck(
     options: {
         baseDir: string;
         pkgbuildParser: PkgBuildParser;
-        repo?: PreaurRepo;
+        repo?: Pick<PreaurRepo, 'name'>;
         sessionLogDir?: string;
         deps: PackageVersionCheckDeps;
         projectGit?: ProjectGitManager;

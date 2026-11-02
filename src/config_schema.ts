@@ -46,6 +46,7 @@ const PreaurResourcesSchema = z.object({
 
 const PreaurRepoSchema = z.object({
     name: z.string().describe('Local pacman repository name.'),
+    removeOld: z.boolean().default(false).describe('Pass -R to repo-add so the previous package file and its signature are deleted when a different version of the same package name replaces it. Files already missing from the database, packages no longer produced, and leftover -debug packages are not removed.'),
 }).strict().describe('Local pacman repository settings.');
 
 const PreaurProjectGitSyncSchema = z.object({

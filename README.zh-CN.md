@@ -289,8 +289,18 @@ useradd -m -G preaur-build preaur
 
 ## 清理过时的软件包
 
-PreAUR 没有实现这个功能，以后大概也不会实现，因为清理过时的软件包不是构建器该做的事。
+默认情况下，PreAUR 不会删除本地仓库里的任何包文件。设置 `repo.removeOld` 后，新版本入库时 `repo-add` 会删除被替换的旧版本：
 
-不过你可以看看我的 [archavenger](https://github.com/kobe-koto/archavenger)。
+```yaml
+repo:
+  name: localrepo
+  removeOld: true # repo-add -R，约等于 `paccache -rk1 -c repo/localrepo`
+```
 
-如果你不需要自动清理孤儿包（比如你从配置中移除了某包），使用 `paccache` 也是个不错的选择。
+开启 `removeOld` 后，如果新构建的包替换了数据库中同名但版本不同的包，`repo-add -R` 会删除旧的包文件和对应的 `.sig`。重新添加完全相同的版本只会提示 "already existed"，不会删除文件。已知限制：
+
+- 开启前就已经脱离数据库的旧文件不会被清理；
+- 不再产出的包（例如去掉的拆分包、关闭 debug 后残留的 `-debug` 包）没有同名新包来替换，所以会保留；
+- 回滚到旧版本需要重新构建，因为旧的包文件已经被删除。
+
+`removeOld` 覆盖不到的情况，可以对仓库目录使用 `paccache -rk1 -c repo/<name>`，或者看看我的 [archavenger](https://github.com/kobe-koto/archavenger)。
