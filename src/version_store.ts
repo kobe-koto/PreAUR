@@ -7,6 +7,8 @@ export interface VersionInfo extends PartialPacmanVersion {
     aur_pkgname?: string;
     maintainer?: string | null;
     co_maintainers?: string[];
+    /** makepkg pkgbase of the last parsed PKGBUILD; may differ from the versions.json key. */
+    pkgbase?: string;
 }
 
 export class VersionStore {

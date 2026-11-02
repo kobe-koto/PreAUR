@@ -6,7 +6,7 @@ import * as path from 'node:path';
 
 import type { PreaurPkgbuildSandboxConfig } from './config';
 import { envAssignments, shellQuote, type EnvPair, type EnvPairs } from './env';
-import { updatePkgBuildWithOps, type PkgBuildData, type PkgBuildParser } from './pkgbuild';
+import { PKGBASE_SHELL_EXPR, normalizePkgbase, parseSrcInfoPkgbase, updatePkgBuildWithOps, withPkgbase, type PkgBuildData, type PkgBuildParser } from './pkgbuild';
 import { DEVTOOLS_DIR, resolveBasePacmanConfig, resolveDevtoolsBuildTarget } from './chroot_pacman';
 import type { PackageWorkDirs } from './workdirs';
 import { constructMessager } from './logger';
@@ -149,7 +149,7 @@ export async function parsePkgBuildInSandbox(
         return parseSrcInfoVersion(stdout);
     }
 
-    const script = `export CARCH="$(uname -m)"; source ./PKGBUILD >/dev/null 2>&1; printf '%s\\n%s\\n%s\\n%s\\n%s\\n' ${shellQuote(VERSION_OUTPUT_BEGIN)} "\${epoch-}" "\${pkgver-}" "\${pkgrel-}" ${shellQuote(VERSION_OUTPUT_END)}`;
+    const script = `export CARCH="$(uname -m)"; source ./PKGBUILD >/dev/null 2>&1; printf '%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n' ${shellQuote(VERSION_OUTPUT_BEGIN)} "\${epoch-}" "\${pkgver-}" "\${pkgrel-}" ${PKGBASE_SHELL_EXPR} ${shellQuote(VERSION_OUTPUT_END)}`;
     const stdout = await runSandboxCommand({
         pkgbuildPath,
         env,
@@ -243,12 +243,12 @@ function parseSrcInfoVersion(stdout: string): PkgBuildData {
     const pkgrel = parseRequiredNonNegativeInt(fields.pkgrel, 'pkgrel', 'sandbox makepkg --printsrcinfo');
     const epoch = parseOptionalNonNegativeInt(fields.epoch, 'epoch', 'sandbox makepkg --printsrcinfo');
 
-    return { epoch, pkgver: fields.pkgver, pkgrel };
+    return withPkgbase({ epoch, pkgver: fields.pkgver, pkgrel }, parseSrcInfoPkgbase(stdout));
 }
 
 export function parseSandboxVersionOutput(stdout: string): PkgBuildData {
     const lines = extractVersionOutputLines(stdout);
-    const [epoch = '', pkgver = '', pkgrel = ''] = lines;
+    const [epoch = '', pkgver = '', pkgrel = '', pkgbase = ''] = lines;
     const parsedPkgrel = parseRequiredNonNegativeInt(pkgrel, 'pkgrel', 'sandbox PKGBUILD evaluation');
     const parsedEpoch = parseOptionalNonNegativeInt(epoch, 'epoch', 'sandbox PKGBUILD evaluation');
 
@@ -256,7 +256,7 @@ export function parseSandboxVersionOutput(stdout: string): PkgBuildData {
         throw new Error('Could not parse pkgver from sandbox PKGBUILD evaluation');
     }
 
-    return { epoch: parsedEpoch, pkgver: pkgver.trim(), pkgrel: parsedPkgrel };
+    return withPkgbase({ epoch: parsedEpoch, pkgver: pkgver.trim(), pkgrel: parsedPkgrel }, normalizePkgbase(pkgbase));
 }
 
 function extractVersionOutputLines(stdout: string): string[] {

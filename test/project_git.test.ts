@@ -116,4 +116,33 @@ describe('ProjectGitManager', () => {
             'versions: update bar to 2:4.5.6-7',
         ]);
     });
+
+    test('commits a pkgbase-only update with its own message', async () => {
+        const { baseDir, git } = await makeGitRepo();
+        await writeDataFile(baseDir, 'versions.json', '{}');
+        await git.add(['data/versions.json']);
+        await git.commit('initial data');
+
+        const store = new VersionStore(baseDir);
+        await store.load();
+        const manager = new ProjectGitManager(baseDir, git, {
+            enabled: true,
+            remote: 'origin',
+            sync: { allow_remote_overwrite_local: false },
+            push: { force: false },
+        }, 'main');
+
+        await saveVersionStoreUpdate(store, 'foo', { pkgver: '1.2.3', pkgrel: 1, pkgbase: 'foo' }, manager);
+        await saveVersionStoreUpdate(store, 'bar', { pkgver: '1.0', pkgrel: 1 }, manager);
+        await saveVersionStoreUpdate(store, 'bar', { pkgbase: 'bar-base' }, manager);
+        await saveVersionStoreUpdate(store, 'bar', { pkgbase: 'bar-base' }, manager);
+
+        expect(await logSubjects(baseDir)).toEqual([
+            'initial data',
+            'versions: update foo to 1.2.3-1',
+            'versions: update bar to 1.0-1',
+            'versions: record bar pkgbase bar-base',
+        ]);
+    });
 });
+

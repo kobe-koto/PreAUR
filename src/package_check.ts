@@ -235,6 +235,10 @@ async function processPackageVersionCheck(
 
     let missingRepoArtifact = false;
     if (!versionChanged) { // version unchanged
+        // Entries written before pkgbase was recorded would otherwise wait for the next version bump.
+        if (finalData.pkgbase && localData?.pkgbase !== finalData.pkgbase) {
+            await saveVersionStoreUpdate(versionStore, pkg.pkgname, { pkgbase: finalData.pkgbase }, projectGit);
+        }
         if (repo) {
             const alreadyBuilt = await hasBuilt(repo, pkg.pkgname, finalData, baseDir);
             if (alreadyBuilt) {

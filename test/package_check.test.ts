@@ -24,7 +24,7 @@ afterEach(async () => {
     }
 });
 
-function makeDeps(finalData: { epoch?: number; pkgver: string; pkgrel: number }, changed = false): PackageVersionCheckDeps {
+function makeDeps(finalData: { epoch?: number; pkgver: string; pkgrel: number; pkgbase?: string }, changed = false): PackageVersionCheckDeps {
     return {
         preparePackageDiff: async (pkgname) => ({
             path: `/tmp/preaur-test/${pkgname}`,
@@ -32,7 +32,12 @@ function makeDeps(finalData: { epoch?: number; pkgver: string; pkgrel: number },
         }),
         updateDynamicPkgver: async () => false,
         updatePkgBuild: async () => changed,
-        parsePkgBuild: async () => ({ epoch: finalData.epoch ?? 0, pkgver: finalData.pkgver, pkgrel: finalData.pkgrel }),
+        parsePkgBuild: async () => ({
+            epoch: finalData.epoch ?? 0,
+            pkgver: finalData.pkgver,
+            pkgrel: finalData.pkgrel,
+            ...(finalData.pkgbase ? { pkgbase: finalData.pkgbase } : {}),
+        }),
     };
 }
 
@@ -278,5 +283,57 @@ describe('runPackageVersionCheck', () => {
         expect(events).toEqual([
             { tag: 'PACKAGE_CHECK_FAILED', context: { pkgname: 'demo', error: 'sandbox exploded' } },
         ]);
+    });
+
+    test('records pkgbase when syncing a missing stored version', async () => {
+        const baseDir = await makeBaseDir();
+        const store = new VersionStore(baseDir);
+        await store.load();
+
+        const deps = makeDeps({ pkgver: '1.0.0', pkgrel: 1, pkgbase: 'demo-base' });
+        deps.hasBuiltPackage = async () => true;
+        await runPackageVersionCheck([{ pkgname: 'demo', maintainer: 'preaur-owner' }], store, {
+            baseDir,
+            repo: { name: 'localrepo' },
+            deps,
+        });
+
+        expect(store.get('demo')).toEqual({ epoch: 0, pkgver: '1.0.0', pkgrel: 1, pkgbase: 'demo-base' });
+    });
+
+    test('backfills pkgbase for an unchanged version without touching other fields', async () => {
+        const baseDir = await makeBaseDir();
+        const store = new VersionStore(baseDir);
+        await store.load();
+        store.set('demo', { pkgver: '1.0.0', pkgrel: 1, maintainer: 'alice' });
+
+        const deps = makeDeps({ pkgver: '1.0.0', pkgrel: 1, pkgbase: 'demo-base' });
+        deps.hasBuiltPackage = async () => true;
+        const result = await runPackageVersionCheck([{ pkgname: 'demo', maintainer: 'preaur-owner' }], store, {
+            baseDir,
+            repo: { name: 'localrepo' },
+            deps,
+        });
+
+        expect(result.buildPlans).toEqual([]);
+        expect(store.get('demo')).toEqual({ pkgver: '1.0.0', pkgrel: 1, maintainer: 'alice', pkgbase: 'demo-base' });
+        expect(JSON.parse(await fs.readFile(path.join(baseDir, 'data', 'versions.json'), 'utf8')).demo.pkgbase).toBe('demo-base');
+    });
+
+    test('does not write versions.json when pkgbase is already recorded', async () => {
+        const baseDir = await makeBaseDir();
+        const store = new VersionStore(baseDir);
+        await store.load();
+        store.set('demo', { pkgver: '1.0.0', pkgrel: 1, pkgbase: 'demo-base' });
+
+        const deps = makeDeps({ pkgver: '1.0.0', pkgrel: 1, pkgbase: 'demo-base' });
+        deps.hasBuiltPackage = async () => true;
+        await runPackageVersionCheck([{ pkgname: 'demo', maintainer: 'preaur-owner' }], store, {
+            baseDir,
+            repo: { name: 'localrepo' },
+            deps,
+        });
+
+        await expect(fs.access(path.join(baseDir, 'data', 'versions.json'))).rejects.toThrow();
     });
 });

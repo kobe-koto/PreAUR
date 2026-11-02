@@ -132,12 +132,10 @@ export class ProjectGitManager {
 
             if (sameVersionInfo(before.versions[pkgname], after.versions[pkgname])) return;
 
-            const version = after.versions[pkgname];
-            const suffix = hasPacmanVersion(version)
-                ? ` to ${formatPacmanVersion(version)}`
-                : '';
-
-            await this.commitFiles([VERSIONS_FILE], `versions: update ${pkgname}${suffix}`);
+            await this.commitFiles(
+                [VERSIONS_FILE],
+                versionStoreUpdateMessage(pkgname, before.versions[pkgname], after.versions[pkgname])
+            );
         });
     }
 
@@ -409,12 +407,30 @@ function setKnownEntry(entries: Map<string, KnownEntry>, key: string, entry: Kno
     }
 }
 
+function versionStoreUpdateMessage(pkgname: string, before: VersionInfo | undefined, after: VersionInfo | undefined): string {
+    if (hasPacmanVersion(after) && !samePacmanVersion(before, after)) {
+        return `versions: update ${pkgname} to ${formatPacmanVersion(after)}`;
+    }
+    const pkgbaseMessage = pkgbaseCommitMessage(pkgname, before, after);
+    if (pkgbaseMessage) return pkgbaseMessage;
+    return hasPacmanVersion(after)
+        ? `versions: update ${pkgname} to ${formatPacmanVersion(after)}`
+        : `versions: update ${pkgname}`;
+}
+
+function pkgbaseCommitMessage(pkgname: string, before: VersionInfo | undefined, after: VersionInfo | undefined): string | undefined {
+    if (!after?.pkgbase || before?.pkgbase === after.pkgbase) return undefined;
+    return `versions: record ${pkgname} pkgbase ${after.pkgbase}`;
+}
+
 function versionCommitMessage(pkgname: string, before: VersionInfo | undefined, target: VersionInfo | undefined): string {
     if (target === undefined) return `versions: remove ${pkgname}`;
     if (hasPacmanVersion(target) && !samePacmanVersion(before, target)) {
         return `versions: update ${pkgname} to ${formatPacmanVersion(target)}`;
     }
     if (before === undefined) return `approval: track ${pkgname} ownership`;
+    const pkgbaseMessage = pkgbaseCommitMessage(pkgname, before, target);
+    if (pkgbaseMessage) return pkgbaseMessage;
     if (before?.source !== (target as VersionInfo).source) return `approval: update ${pkgname} source`;
 
     return `approval: update ${pkgname} maintainers`;
