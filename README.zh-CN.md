@@ -172,7 +172,7 @@ mold 和 LLD 都接受 GNU ld 的命令行，但都不是完全的替代品：mo
 
 | 文件系统 | `makechrootpkg` 如何重置副本 | 每次构建的开销 |
 |---|---|---|
-| btrfs，且 `root` 是 subvolume | `btrfs subvolume snapshot` | 几乎为零（写时复制，只动元数据） |
+| btrfs，且 `root` 是 subvolume | `btrfs subvolume snapshot` | 几乎为零（CoW，只动 metadata） |
 | 其他（ext4、xfs 等） | 对整个 root 执行 `rsync -a --delete` | 每个 worker 的每次构建都完整复制一遍构建 root（数百 MB、数万个文件） |
 
 在需要构建大量软件包或运行多个 worker 的机器上，建议把 `/var/lib/archbuild` 放在 btrfs 上。它不必是根文件系统，单独的 btrfs 分区或 loop 挂载的 btrfs 镜像都可以：
@@ -256,9 +256,10 @@ useradd -m -G preaur-build preaur
    Description=PreAUR Automated Package Builder
    
    [Service]
-   Type=oneshot
+   Type=simple
    WorkingDirectory=%h/preaur
-   ExecStart=/usr/bin/bun run src/index.ts
+   # 如果你是安装的 aur/preaur-{git,bin}, 它应该在这里
+   ExecStart=/usr/bin/preaur
    ```
 
 2. 创建 timer 文件：
@@ -291,3 +292,5 @@ useradd -m -G preaur-build preaur
 PreAUR 没有实现这个功能，以后大概也不会实现，因为清理过时的软件包不是构建器该做的事。
 
 不过你可以看看我的 [archavenger](https://github.com/kobe-koto/archavenger)。
+
+如果你不需要自动清理孤儿包（比如你从配置中移除了某包），使用 `paccache` 也是个不错的选择。

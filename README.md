@@ -172,7 +172,7 @@ With `resources.parallel` set to N, PreAUR gives each concurrent devtools build 
 
 | Filesystem | How `makechrootpkg` resets the copy | Cost per build |
 |---|---|---|
-| btrfs, with `root` a subvolume | `btrfs subvolume snapshot` | Near zero (copy-on-write, metadata only) |
+| btrfs, with `root` a subvolume | `btrfs subvolume snapshot` | Near zero (CoW, metadata only) |
 | anything else (ext4, xfs, …) | `rsync -a --delete` of the whole root | A full copy of the build root (hundreds of MB, tens of thousands of files) for every build in every worker |
 
 On hosts that build many packages or run several workers, put `/var/lib/archbuild` on btrfs. It does not have to be the root filesystem; a dedicated btrfs partition or a loop-mounted btrfs image works:
@@ -255,9 +255,10 @@ useradd -m -G preaur-build preaur
    Description=PreAUR Automated Package Builder
    
    [Service]
-   Type=oneshot
+   Type=simple
    WorkingDirectory=%h/preaur
-   ExecStart=/usr/bin/bun run src/index.ts
+   # if you installed aur/preaur-{git,bin}, it should be here
+   ExecStart=/usr/bin/preaur
    ```
 
 2. Create a timer file:
@@ -290,3 +291,5 @@ useradd -m -G preaur-build preaur
 PreAUR hasn't implemented this feature and likely never will, because removing outdated packages is not the builder's job. 
 
 You can check out my [archavenger](https://github.com/kobe-koto/archavenger), however.
+
+If you don't need automatic removal of orphaned packages (for example, a package you removed from the config), `paccache` is also a good choice.
