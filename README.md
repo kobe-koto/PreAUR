@@ -294,6 +294,7 @@ By default PreAUR never deletes package files from the local repository. Set `re
 repo:
   name: localrepo
   removeOld: true # repo-add -R, roughly `paccache -rk1 -c repo/localrepo`
+  removeOrphans: true # repo-remove packages that were removed from the config
 ```
 
 With `removeOld`, when a newly built package replaces a different version of the same package name in the database, `repo-add -R` deletes the old package file and its `.sig`. Re-adding the exact same version only prints "already existed" and deletes nothing. It has these limits:
@@ -302,4 +303,15 @@ With `removeOld`, when a newly built package replaces a different version of the
 - Packages that are no longer produced (a dropped split package, or `-debug` packages left over after disabling debug) have no new package of the same name to replace them, so they stay.
 - Rolling back to an older version needs a rebuild, because the older package file has already been deleted.
 
-For anything `removeOld` does not cover, `paccache -rk1 -c repo/<name>` works on the repository directory, or check out my [archavenger](https://github.com/kobe-koto/archavenger).
+### Packages Removed From the Config
+
+When a package is no longer listed in `packages`, PreAUR always drops its entry from `data/versions.json` and commits that as `versions: remove <pkgname>`. `data/known_packages` and `data/known_maintainers` are kept, so adding the package back keeps its approval and does not rebuild it if its package file still exists.
+
+With `repo.removeOrphans`, PreAUR also cleans the repository before dropping the entry: it runs `repo-remove` for `<pkgname>` and `<pkgname>-debug` (only the names actually in the database), then deletes their package files and `.sig` files. If `repo-remove` fails, the entry is kept and the cleanup is retried on the next run. Things to know:
+
+- Only packages recorded in `data/versions.json` are removed. Packages you put into the repository by hand are never touched.
+- Split packages other than `<pkgname>` and `<pkgname>-debug` are not removed yet.
+- Entries dropped while `removeOrphans` was off are gone, so enabling it later does not clean those packages; remove them once by hand with `repo-remove` and `rm`.
+- Cleanup runs only when there is something to process; a run with no packages, or with `-p` naming a package not in the config, exits before it.
+
+For anything these options do not cover, `paccache -rk1 -c repo/<name>` works on the repository directory, or check out my [archavenger](https://github.com/kobe-koto/archavenger).

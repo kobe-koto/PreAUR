@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { ProjectGitManager, readProjectDataSnapshot } from '../src/project_git';
-import { VersionStore, pruneOrphanVersions, type VersionInfo } from '../src/version_store';
+import { VersionStore, findOrphanVersions, pruneOrphanVersions, type VersionInfo } from '../src/version_store';
 
 const tmpDirs: string[] = [];
 
@@ -137,5 +137,17 @@ describe('pruneOrphanVersions', () => {
         const subjects = (await git.raw(['log', '--format=%s', '--reverse'])).trim().split('\n');
         expect(subjects).toEqual(['init', 'versions: remove gone', 'versions: remove gone-too']);
         expect((await readProjectDataSnapshot(baseDir)).versions).toEqual({ foo: versions.foo!, bar: versions.bar! });
+    });
+});
+
+describe('findOrphanVersions', () => {
+    test('reports orphans without modifying the store', async () => {
+        const baseDir = await makeBaseDir();
+        await writeVersions(baseDir, versions);
+        const store = new VersionStore(baseDir);
+        await store.load();
+
+        expect(findOrphanVersions(store, ['foo', 'bar']).map(([name]) => name)).toEqual(['gone', 'gone-too']);
+        expect(store.entries()).toHaveLength(4);
     });
 });

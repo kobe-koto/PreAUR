@@ -57,17 +57,27 @@ export class VersionStore {
 }
 
 /**
- * Remove entries whose key is not a configured pkgname and return them.
- * configuredNames must come from the full config.packages list, not a
- * filtered subset (such as -p), or every other package would be pruned.
- * The store is modified in memory only; the caller saves it.
+ * Entries whose key is not a configured pkgname. configuredNames must come
+ * from the full config.packages list, not a filtered subset (such as -p), or
+ * every other package would be reported as an orphan.
+ */
+export function findOrphanVersions(
+    store: VersionStore,
+    configuredNames: Iterable<string>
+): Array<[string, VersionInfo]> {
+    const configured = new Set(configuredNames);
+    return store.entries().filter(([pkgname]) => !configured.has(pkgname));
+}
+
+/**
+ * Remove the entries findOrphanVersions reports and return them. The store is
+ * modified in memory only; the caller saves it.
  */
 export function pruneOrphanVersions(
     store: VersionStore,
     configuredNames: Iterable<string>
 ): Array<[string, VersionInfo]> {
-    const configured = new Set(configuredNames);
-    const orphans = store.entries().filter(([pkgname]) => !configured.has(pkgname));
+    const orphans = findOrphanVersions(store, configuredNames);
     for (const [pkgname] of orphans) {
         store.delete(pkgname);
     }

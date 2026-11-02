@@ -295,6 +295,7 @@ useradd -m -G preaur-build preaur
 repo:
   name: localrepo
   removeOld: true # repo-add -R，约等于 `paccache -rk1 -c repo/localrepo`
+  removeOrphans: true # 对从配置中移除的包执行 repo-remove
 ```
 
 开启 `removeOld` 后，如果新构建的包替换了数据库中同名但版本不同的包，`repo-add -R` 会删除旧的包文件和对应的 `.sig`。重新添加完全相同的版本只会提示 "already existed"，不会删除文件。已知限制：
@@ -303,4 +304,15 @@ repo:
 - 不再产出的包（例如去掉的拆分包、关闭 debug 后残留的 `-debug` 包）没有同名新包来替换，所以会保留；
 - 回滚到旧版本需要重新构建，因为旧的包文件已经被删除。
 
-`removeOld` 覆盖不到的情况，可以对仓库目录使用 `paccache -rk1 -c repo/<name>`，或者看看我的 [archavenger](https://github.com/kobe-koto/archavenger)。
+### 从配置中移除的包
+
+某个包不再出现在 `packages` 中时，PreAUR 总会从 `data/versions.json` 删除它的条目，并提交为 `versions: remove <pkgname>`。`data/known_packages` 和 `data/known_maintainers` 会保留，所以把包重新加回来时批准状态不变，如果包文件还在也不会重新构建。
+
+开启 `repo.removeOrphans` 后，PreAUR 会在删除条目之前先清理仓库：对 `<pkgname>` 和 `<pkgname>-debug` 执行 `repo-remove`（只传数据库里实际存在的包名），然后删除对应的包文件和 `.sig`。如果 `repo-remove` 失败，条目会保留，下次运行时重试。注意：
+
+- 只会删除 `data/versions.json` 里记录过的包，手动放进仓库的包不会被动到；
+- 目前不会删除 `<pkgname>` 和 `<pkgname>-debug` 以外的拆分包；
+- 关闭 `removeOrphans` 期间删除的条目已经不在了，之后再开启也不会清理这些包，需要用 `repo-remove` 和 `rm` 手动清理一次；
+- 只有在有包需要处理时才会执行清理；没有任何包，或 `-p` 指定的包不在配置中时，程序会在清理之前退出。
+
+这些选项覆盖不到的情况，可以对仓库目录使用 `paccache -rk1 -c repo/<name>`，或者看看我的 [archavenger](https://github.com/kobe-koto/archavenger)。

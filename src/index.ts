@@ -9,12 +9,12 @@ import { commitAndPush } from './git';
 import { buildPackage } from './builder';
 import { createDummyPackages } from './dummy';
 import { createPreBuildPackage, packagePreBuildConfig } from './prebuild';
-import { manageRepository, hasBuiltPackage, resolveBuiltPackage } from './repo';
+import { manageRepository, hasBuiltPackage, resolveBuiltPackage, orphanRepoPackageNames, removeRepoPackages } from './repo';
 import { initMainLogger, createTaskLogger, getSessionLogDir, getTaskLogPath, loggerContext, constructMessager } from './logger';
 import { Semaphore } from './semaphore';
 import { ChrootPool } from './chroot_pool';
 import { describeToolchain, isDefaultToolchain, resolveToolchain, toolchainPackages, toolchainScripts, writeToolchainDropIn } from './toolchain';
-import { VersionStore, pruneOrphanVersions } from './version_store';
+import { VersionStore, findOrphanVersions } from './version_store';
 import { runApprovalCheck } from './approval';
 import { runPackageVersionCheck, type PackageBuildPlan } from './package_check';
 import { ensurePackageLogDir } from './workdirs';
@@ -70,11 +70,29 @@ program
             await versionStore.load();
 
             // Use the full package list: with -p, packagesToProcess holds only one package.
-            const orphanSnapshot = await projectGit?.snapshotData();
-            const orphanVersions = pruneOrphanVersions(versionStore, config.packages.map(p => p.pkgname));
+            const configuredNames = config.packages.map(p => p.pkgname);
+            let orphanVersions = findOrphanVersions(versionStore, configuredNames);
+            if (orphanVersions.length > 0 && config.repo?.removeOrphans) {
+                const orphanNames = orphanVersions.map(([pkgname]) => pkgname);
+                try {
+                    // Clean the repository first; keep the entries on failure so the next run retries.
+                    await removeRepoPackages(
+                        config.repo,
+                        orphanRepoPackageNames(orphanNames, configuredNames),
+                        process.cwd()
+                    );
+                } catch (e: any) {
+                    console.error(PreaurMessager(`Failed to remove orphaned packages from repository (${orphanNames.join(', ')}); keeping their versions.json entries to retry next run: ${e.message}`));
+                    orphanVersions = [];
+                }
+            }
             if (orphanVersions.length > 0) {
+                const orphanSnapshot = await projectGit?.snapshotData();
                 const names = orphanVersions.map(([pkgname]) => pkgname).join(', ');
                 console.log(PreaurMessager(`Removing versions.json entries for packages no longer in config: ${names}`));
+                for (const [pkgname] of orphanVersions) {
+                    versionStore.delete(pkgname);
+                }
                 await versionStore.save();
                 if (orphanSnapshot) {
                     await projectGit?.commitDataChanges(orphanSnapshot);
