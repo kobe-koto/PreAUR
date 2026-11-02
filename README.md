@@ -1,5 +1,7 @@
 # 📦 PreAUR 📦
 
+English | [简体中文](./README.zh-CN.md)
+
 **PreAUR** is an automated Arch Linux AUR (not only) package builder and maintainer (kinda) written in TypeScript. 
 
 It streamlines the process of fetching, updating, building, and publishing packages, while automatically maintaining a local pacman repository.
