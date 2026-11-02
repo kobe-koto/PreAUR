@@ -8,9 +8,23 @@ export const TOOLCHAIN_DROPIN_CHROOT_PATH = '/etc/makepkg.conf.d/zz-preaur-toolc
 
 export type LtoMode = 'default' | 'off' | 'thin' | 'full';
 
+/**
+ * driver: select the linker through the compiler driver (-fuse-ld=...).
+ * replace: point /usr/bin/ld at the linker inside the build chroot, so every
+ * link uses it, including build systems that run `ld` directly.
+ */
+export type LinkerMode = 'driver' | 'replace';
+export type LinkerName = 'lld' | 'mold';
+
+export interface ResolvedLinker {
+    name: LinkerName;
+    mode: LinkerMode;
+}
+
 export interface ResolvedToolchain {
     llvm: boolean;
-    mold: boolean;
+    /** undefined keeps the compiler's default linker (GNU ld). */
+    linker?: ResolvedLinker;
     lto: LtoMode;
     /** undefined keeps the chroot makepkg.conf debug policy. */
     debug?: boolean;
@@ -29,25 +43,72 @@ export function resolveToolchain(
     const pick = <K extends keyof PreaurToolchainConfig>(key: K): PreaurToolchainConfig[K] =>
         pkg?.[key] !== undefined ? pkg[key] : global?.[key];
 
+    const llvm = pick('llvm') ?? false;
+    const mold = linkerMode(pick('mold'));
+    const lld = linkerMode(pick('lld'));
+    if (mold && lld) {
+        throw new ToolchainConflictError('toolchain.mold and toolchain.lld cannot both be enabled; set one of them to false.');
+    }
+
+    let linker: ResolvedLinker | undefined;
+    if (mold) {
+        linker = { name: 'mold', mode: mold };
+    } else if (lld) {
+        linker = { name: 'lld', mode: lld };
+    } else if (llvm && pick('lld') !== false) {
+        // Clang builds link with LLD unless lld is disabled or mold is chosen.
+        linker = { name: 'lld', mode: 'driver' };
+    }
+
     return {
-        llvm: pick('llvm') ?? false,
-        mold: pick('mold') ?? false,
+        llvm,
+        linker,
         lto: pick('lto') ?? 'default',
         debug: pick('debug'),
         stripOnLink: pick('stripOnLink') ?? false,
     };
 }
 
+class ToolchainConflictError extends Error {}
+
+/** `true` is the driver mode; `false`/unset disables the linker. */
+function linkerMode(value: boolean | LinkerMode | undefined): LinkerMode | undefined {
+    if (value === true) return 'driver';
+    if (value === false || value === undefined) return undefined;
+    return value;
+}
+
+/** Resolve and validate the merged toolchain, prefixing errors with `context`. */
+export function resolveValidToolchain(
+    global: PreaurToolchainConfig | undefined,
+    pkg: PreaurToolchainConfig | undefined,
+    context: string,
+): ResolvedToolchain {
+    let toolchain: ResolvedToolchain;
+    try {
+        toolchain = resolveToolchain(global, pkg);
+    } catch (e) {
+        if (e instanceof ToolchainConflictError) throw new Error(`${context}: ${e.message}`);
+        throw e;
+    }
+    validateToolchain(toolchain, context);
+    return toolchain;
+}
+
 export function validateToolchain(toolchain: ResolvedToolchain, context: string): void {
     if (toolchain.lto === 'thin' && !toolchain.llvm) {
         throw new Error(`${context}: toolchain.lto "thin" requires toolchain.llvm: true (ThinLTO is LLVM-only).`);
+    }
+    if (toolchain.linker?.name === 'lld' && !toolchain.llvm && toolchain.lto !== 'off') {
+        // LLD cannot read GCC's GIMPLE LTO objects, and makepkg enables LTO by default.
+        throw new Error(`${context}: toolchain.lld with GCC requires toolchain.lto: "off" (LLD cannot link GCC LTO objects), or enable toolchain.llvm.`);
     }
 }
 
 /** True when the toolchain changes nothing compared with plain makepkg. */
 export function isDefaultToolchain(toolchain: ResolvedToolchain): boolean {
     return !toolchain.llvm
-        && !toolchain.mold
+        && !toolchain.linker
         && toolchain.lto === 'default'
         && toolchain.debug === undefined
         && !toolchain.stripOnLink;
@@ -56,16 +117,29 @@ export function isDefaultToolchain(toolchain: ResolvedToolchain): boolean {
 /** Packages the chroot needs for the selected toolchain. */
 export function toolchainPackages(toolchain: ResolvedToolchain): string[] {
     const packages: string[] = [];
-    // llvm provides llvm-ar/ranlib/nm/strip; LLVMgold.so (LTO with mold) comes with llvm-libs.
-    if (toolchain.llvm) packages.push('clang', 'llvm', 'lld');
-    if (toolchain.mold) packages.push('mold');
+    // llvm provides llvm-ar/ranlib/nm/strip; LLVMgold.so (LTO with mold or GNU ld) comes with llvm-libs.
+    if (toolchain.llvm) packages.push('clang', 'llvm');
+    if (toolchain.linker) packages.push(toolchain.linker.name);
     return packages;
+}
+
+/**
+ * Root scripts run in the build chroot before the build (through the
+ * pre-build helper package). The chroot copy is reset for every build, so
+ * replacing /usr/bin/ld does not leak into other packages. ld.bfd stays
+ * available as an explicit fallback (-fuse-ld=bfd).
+ */
+export function toolchainScripts(toolchain: ResolvedToolchain): string[] {
+    if (toolchain.linker?.mode !== 'replace') return [];
+    return [`ln -sfn ld.${toolchain.linker.name} /usr/bin/ld`];
 }
 
 export function describeToolchain(toolchain: ResolvedToolchain): string {
     const parts: string[] = [];
     if (toolchain.llvm) parts.push('llvm');
-    if (toolchain.mold) parts.push('mold');
+    if (toolchain.linker) {
+        parts.push(toolchain.linker.mode === 'replace' ? `${toolchain.linker.name}=replace` : toolchain.linker.name);
+    }
     if (toolchain.lto !== 'default') parts.push(`lto=${toolchain.lto}`);
     if (toolchain.debug !== undefined) parts.push(toolchain.debug ? 'debug' : '!debug');
     if (toolchain.stripOnLink) parts.push('strip-on-link');
@@ -114,17 +188,24 @@ export function renderToolchainDropIn(toolchain: ResolvedToolchain, pkgname: str
             '# Clang does not support GCC\'s -flto=auto spelling.',
             'LTOFLAGS="${LTOFLAGS//-flto=auto/-flto=full}"',
         );
-        if (!toolchain.mold) {
-            lines.push('export LD=ld.lld', 'LDFLAGS+=" -fuse-ld=lld"');
-        }
     }
 
-    if (toolchain.mold) {
-        lines.push(
-            '',
-            'LDFLAGS+=" -fuse-ld=mold"',
-            'RUSTFLAGS+=" -C link-arg=-fuse-ld=mold"',
-        );
+    if (toolchain.linker) {
+        const { name, mode } = toolchain.linker;
+        if (mode === 'driver') {
+            lines.push(
+                '',
+                `export LD=ld.${name}`,
+                `LDFLAGS+=" -fuse-ld=${name}"`,
+                `RUSTFLAGS+=" -C link-arg=-fuse-ld=${name}"`,
+            );
+        } else {
+            lines.push(
+                '',
+                `# /usr/bin/ld points at ld.${name} in this chroot (linker mode "replace").`,
+                `export LD=ld.${name}`,
+            );
+        }
     }
 
     if (toolchain.lto !== 'default') {

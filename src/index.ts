@@ -13,7 +13,7 @@ import { manageRepository, hasBuiltPackage, resolveBuiltPackage } from './repo';
 import { initMainLogger, createTaskLogger, getSessionLogDir, getTaskLogPath, loggerContext, constructMessager } from './logger';
 import { Semaphore } from './semaphore';
 import { ChrootPool } from './chroot_pool';
-import { describeToolchain, isDefaultToolchain, resolveToolchain, toolchainPackages, writeToolchainDropIn } from './toolchain';
+import { describeToolchain, isDefaultToolchain, resolveToolchain, toolchainPackages, toolchainScripts, writeToolchainDropIn } from './toolchain';
 import { VersionStore } from './version_store';
 import { runApprovalCheck } from './approval';
 import { runPackageVersionCheck, type PackageBuildPlan } from './package_check';
@@ -206,6 +206,8 @@ program
                                 if (customToolchain) {
                                     console.log(PreaurMessager(`Toolchain for ${pkg.pkgname}: ${describeToolchain(toolchain)}`));
                                     preBuildConfig.packages.push(...toolchainPackages(toolchain));
+                                    // Toolchain setup runs before the package's own pre-build scripts.
+                                    preBuildConfig.scripts.unshift(...toolchainScripts(toolchain));
                                     toolchainDropIn = await writeToolchainDropIn(toolchain, pkg.pkgname, workDirs.root);
                                 }
 

@@ -109,8 +109,9 @@ Global toolchain options for all packages. Packages can override individual fiel
 
 | Key | Required | Type | Default | Description |
 | --- | --- | --- | --- | --- |
-| `llvm` | no | boolean |  | Build with Clang/LLVM: CC=clang, CXX=clang++, llvm-ar/llvm-ranlib/llvm-nm, llvm-strip, and LLD unless mold is enabled. Installs clang, llvm, and lld in the chroot. |
-| `mold` | no | boolean |  | Link with mold (-fuse-ld=mold in LDFLAGS and RUSTFLAGS). Installs mold in the chroot. |
+| `llvm` | no | boolean |  | Build with Clang/LLVM: CC=clang, CXX=clang++, llvm-ar/llvm-ranlib/llvm-nm, and llvm-strip. Links with LLD in driver mode unless lld is false or mold is enabled. Installs clang and llvm in the chroot. |
+| `mold` | no | boolean \| driver \| replace |  | Link with mold. driver (or true): -fuse-ld=mold in LDFLAGS and RUSTFLAGS. replace: point /usr/bin/ld at ld.mold in the build chroot so every link uses mold. Installs mold in the chroot. |
+| `lld` | no | boolean \| driver \| replace |  | Link with LLD. driver (or true): -fuse-ld=lld in LDFLAGS and RUSTFLAGS. replace: point /usr/bin/ld at ld.lld in the build chroot. false disables the implicit LLD of llvm. With GCC it requires lto: off. Installs lld in the chroot. |
 | `lto` | no | default \| off \| thin \| full |  | C/C++ link-time optimization: default keeps the makepkg policy, off disables LTO, thin uses LLVM ThinLTO (requires llvm), full uses -flto=full (LLVM) or -flto=auto with gcc-ar/gcc-ranlib/gcc-nm (GCC). |
 | `debug` | no | boolean |  | Force makepkg debug packages on (true) or off (false). Unset keeps the chroot makepkg.conf policy. |
 | `stripOnLink` | no | boolean |  | Strip at link time (-s in LDFLAGS) and disable makepkg post-build stripping (!strip). No debug package is produced. |
@@ -231,8 +232,9 @@ Per-package toolchain overrides. Set fields replace config.toolchain field by fi
 
 | Key | Required | Type | Default | Description |
 | --- | --- | --- | --- | --- |
-| `llvm` | no | boolean |  | Build with Clang/LLVM: CC=clang, CXX=clang++, llvm-ar/llvm-ranlib/llvm-nm, llvm-strip, and LLD unless mold is enabled. Installs clang, llvm, and lld in the chroot. |
-| `mold` | no | boolean |  | Link with mold (-fuse-ld=mold in LDFLAGS and RUSTFLAGS). Installs mold in the chroot. |
+| `llvm` | no | boolean |  | Build with Clang/LLVM: CC=clang, CXX=clang++, llvm-ar/llvm-ranlib/llvm-nm, and llvm-strip. Links with LLD in driver mode unless lld is false or mold is enabled. Installs clang and llvm in the chroot. |
+| `mold` | no | boolean \| driver \| replace |  | Link with mold. driver (or true): -fuse-ld=mold in LDFLAGS and RUSTFLAGS. replace: point /usr/bin/ld at ld.mold in the build chroot so every link uses mold. Installs mold in the chroot. |
+| `lld` | no | boolean \| driver \| replace |  | Link with LLD. driver (or true): -fuse-ld=lld in LDFLAGS and RUSTFLAGS. replace: point /usr/bin/ld at ld.lld in the build chroot. false disables the implicit LLD of llvm. With GCC it requires lto: off. Installs lld in the chroot. |
 | `lto` | no | default \| off \| thin \| full |  | C/C++ link-time optimization: default keeps the makepkg policy, off disables LTO, thin uses LLVM ThinLTO (requires llvm), full uses -flto=full (LLVM) or -flto=auto with gcc-ar/gcc-ranlib/gcc-nm (GCC). |
 | `debug` | no | boolean |  | Force makepkg debug packages on (true) or off (false). Unset keeps the chroot makepkg.conf policy. |
 | `stripOnLink` | no | boolean |  | Strip at link time (-s in LDFLAGS) and disable makepkg post-build stripping (!strip). No debug package is produced. |

@@ -32,8 +32,9 @@ config:
   # generated /etc/makepkg.conf.d drop-in. Unset fields keep makepkg defaults.
   # Packages can override any field with their own `toolchain:` block.
   # toolchain:
-  #   llvm: true          # clang/clang++, llvm-ar/ranlib/nm, llvm-strip, lld
-  #   mold: true          # -fuse-ld=mold (replaces lld when llvm is on)
+  #   llvm: true          # clang/clang++, llvm-ar/ranlib/nm, llvm-strip; LLD by default
+  #   mold: "driver"      # true/driver: -fuse-ld=mold; replace: /usr/bin/ld -> ld.mold
+  #   lld: false          # same modes as mold; false drops llvm's implicit LLD
   #   lto: "thin"         # default | off | thin (needs llvm) | full
   #   debug: false        # false -> !debug, true -> debug
   #   stripOnLink: false  # -s in LDFLAGS plus !strip

@@ -155,10 +155,13 @@ config.toolchain
 Global toolchain options for all packages. Packages can override individual fields with their own toolchain block.
 .TP
 .B llvm
-Type: boolean. Required: no. Build with Clang/LLVM: CC=clang, CXX=clang++, llvm\-ar/llvm\-ranlib/llvm\-nm, llvm\-strip, and LLD unless mold is enabled. Installs clang, llvm, and lld in the chroot.
+Type: boolean. Required: no. Build with Clang/LLVM: CC=clang, CXX=clang++, llvm\-ar/llvm\-ranlib/llvm\-nm, and llvm\-strip. Links with LLD in driver mode unless lld is false or mold is enabled. Installs clang and llvm in the chroot.
 .TP
 .B mold
-Type: boolean. Required: no. Link with mold (\-fuse\-ld=mold in LDFLAGS and RUSTFLAGS). Installs mold in the chroot.
+Type: boolean | driver | replace. Required: no. Link with mold. driver (or true): \-fuse\-ld=mold in LDFLAGS and RUSTFLAGS. replace: point /usr/bin/ld at ld.mold in the build chroot so every link uses mold. Installs mold in the chroot.
+.TP
+.B lld
+Type: boolean | driver | replace. Required: no. Link with LLD. driver (or true): \-fuse\-ld=lld in LDFLAGS and RUSTFLAGS. replace: point /usr/bin/ld at ld.lld in the build chroot. false disables the implicit LLD of llvm. With GCC it requires lto: off. Installs lld in the chroot.
 .TP
 .B lto
 Type: default | off | thin | full. Required: no. C/C++ link\-time optimization: default keeps the makepkg policy, off disables LTO, thin uses LLVM ThinLTO (requires llvm), full uses \-flto=full (LLVM) or \-flto=auto with gcc\-ar/gcc\-ranlib/gcc\-nm (GCC).
@@ -359,10 +362,13 @@ packages[].toolchain
 Per\-package toolchain overrides. Set fields replace config.toolchain field by field.
 .TP
 .B llvm
-Type: boolean. Required: no. Build with Clang/LLVM: CC=clang, CXX=clang++, llvm\-ar/llvm\-ranlib/llvm\-nm, llvm\-strip, and LLD unless mold is enabled. Installs clang, llvm, and lld in the chroot.
+Type: boolean. Required: no. Build with Clang/LLVM: CC=clang, CXX=clang++, llvm\-ar/llvm\-ranlib/llvm\-nm, and llvm\-strip. Links with LLD in driver mode unless lld is false or mold is enabled. Installs clang and llvm in the chroot.
 .TP
 .B mold
-Type: boolean. Required: no. Link with mold (\-fuse\-ld=mold in LDFLAGS and RUSTFLAGS). Installs mold in the chroot.
+Type: boolean | driver | replace. Required: no. Link with mold. driver (or true): \-fuse\-ld=mold in LDFLAGS and RUSTFLAGS. replace: point /usr/bin/ld at ld.mold in the build chroot so every link uses mold. Installs mold in the chroot.
+.TP
+.B lld
+Type: boolean | driver | replace. Required: no. Link with LLD. driver (or true): \-fuse\-ld=lld in LDFLAGS and RUSTFLAGS. replace: point /usr/bin/ld at ld.lld in the build chroot. false disables the implicit LLD of llvm. With GCC it requires lto: off. Installs lld in the chroot.
 .TP
 .B lto
 Type: default | off | thin | full. Required: no. C/C++ link\-time optimization: default keeps the makepkg policy, off disables LTO, thin uses LLVM ThinLTO (requires llvm), full uses \-flto=full (LLVM) or \-flto=auto with gcc\-ar/gcc\-ranlib/gcc\-nm (GCC).

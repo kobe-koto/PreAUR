@@ -118,7 +118,7 @@ config:
 packages:
   - pkgname: "fast-thing"
     toolchain:
-      mold: true          # adds mold on top of the global llvm + ThinLTO
+      mold: replace       # mold for every link, instead of the global llvm's LLD
   - pkgname: "picky-thing"
     toolchain:
       llvm: false         # back to GCC for this package
@@ -127,22 +127,39 @@ packages:
 
 | Field | Values | Effect |
 |---|---|---|
-| `llvm` | boolean | `CC=clang`, `CXX=clang++`, `AR=llvm-ar`, `RANLIB=llvm-ranlib`, `NM=llvm-nm`, makepkg strips with `llvm-strip`, links with LLD (`-fuse-ld=lld`) unless `mold` is on. Installs `clang`, `llvm`, and `lld`. |
-| `mold` | boolean | Adds `-fuse-ld=mold` to `LDFLAGS` and `-C link-arg=-fuse-ld=mold` to `RUSTFLAGS`. Installs `mold`. |
+| `llvm` | boolean | `CC=clang`, `CXX=clang++`, `AR=llvm-ar`, `RANLIB=llvm-ranlib`, `NM=llvm-nm`, and makepkg strips with `llvm-strip`. Links with LLD in `driver` mode unless `lld: false` or `mold` is set. Installs `clang` and `llvm`. |
+| `mold` | `true`, `driver`, `replace`, `false` | Link with mold (see linker modes below). Installs `mold`. |
+| `lld` | `true`, `driver`, `replace`, `false` | Link with LLD (see linker modes below). `false` turns off the implicit LLD of `llvm` and links with GNU ld. Installs `lld`. |
 | `lto` | `default`, `off`, `thin`, `full` | `default` keeps the makepkg policy. `off` sets `!lto` and removes inherited `-flto*` flags. `thin` uses `-flto=thin` and requires `llvm: true`. `full` uses `-flto=full` with LLVM, or `-flto=auto` plus `gcc-ar`/`gcc-ranlib`/`gcc-nm` with GCC. |
 | `debug` | boolean | `false` replaces `debug` with `!debug` in `OPTIONS`; `true` forces `debug`. Unset keeps the chroot policy. |
 | `stripOnLink` | boolean | Adds `-s` to `LDFLAGS` and sets `!strip`. No debug package is produced, because makepkg splits debug info during its strip step. |
 
+Linker modes (`mold` and `lld`; `true` means `driver`):
+
+| Mode | How | Covers |
+|---|---|---|
+| `driver` | `-fuse-ld=<linker>` in `LDFLAGS` and `-C link-arg=-fuse-ld=<linker>` in `RUSTFLAGS`, plus `LD=ld.<linker>` | Links done through the compiler driver (gcc, clang, rustc via cc) that honor `LDFLAGS`/`RUSTFLAGS` |
+| `replace` | `/usr/bin/ld` in the build chroot becomes a symlink to `ld.<linker>`; `LD=ld.<linker>` | Every link, including build systems that run `ld` directly or ignore `LDFLAGS`, like `mold -run` |
+
+`replace` changes only the worker's chroot copy, which devtools resets from the clean root before every build, so it never leaks into other packages. `ld.bfd` stays the real GNU ld, so a PKGBUILD can still opt out with `-fuse-ld=bfd`. Because it also affects packages that call `ld` directly, prefer `driver` globally and use `replace` per package where it is needed.
+
+mold and LLD both accept the GNU ld command line, but neither is a complete replacement: mold supports only a small subset of linker scripts, and both lack some bfd-specific options. Packages with custom linker scripts (kernel modules, bootloaders, firmware, EFI binaries) may need `mold: false` / `lld: false`.
+
+Linker rules checked when the config is loaded (per package, after merging):
+
+- `mold` and `lld` cannot both be enabled. If the global config enables one, a package switching to the other must set the first to `false`.
+- `lld` with GCC (no `llvm`) requires `lto: off`, because LLD cannot link GCC's LTO objects and makepkg enables LTO by default.
+- `lto: thin` requires `llvm: true`.
+
 How it is applied:
 
 - For each build, PreAUR writes a makepkg.conf drop-in to the package work directory and bind-mounts it read-only into the devtools chroot as `/etc/makepkg.conf.d/zz-preaur-toolchain.conf` (`makechrootpkg -D`). makepkg sources it after `/etc/makepkg.conf` and the devtools drop-ins, so the chroot configuration is never edited.
-- Required tools (`clang`, `llvm`, `lld`, `mold`) are installed into the chroot through the same helper package used by `pre-build-packages`.
+- Required tools (`clang`, `llvm`, `lld`, `mold`) are installed into the chroot through the same helper package used by `pre-build-packages`. In `replace` mode the helper's install script also creates the `/usr/bin/ld` symlink, before the package's own `pre-build-scripts` run.
 - Toolchain options require a devtools `*-build` builder; other builders fail with an error.
-- `lto: thin` without `llvm` is rejected when the config is loaded, checked per package after merging.
 
 Limitations:
 
-- mold is selected with `-fuse-ld=mold`, so it only applies where the compiler driver performs the link. Build systems that invoke `ld` directly keep the default linker.
+- In `driver` mode, build systems that invoke `ld` directly keep GNU ld; use `replace` for those.
 - PKGBUILD `options` still take precedence (`!lto`, `!buildflags`, `!strip`, `!debug`), and hardcoded compilers or flags in a PKGBUILD can override these settings.
 - `lto` targets C/C++ (`CFLAGS`, `CXXFLAGS`, `LDFLAGS`); it does not configure Rust LTO.
 - Changing toolchain options does not by itself trigger a rebuild of package versions that are already built.

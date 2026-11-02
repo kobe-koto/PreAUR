@@ -91,8 +91,9 @@ const PreaurPkgbuildSandboxSchema = z.object({
 }).strict().prefault({}).describe('Chroot sandbox used for PKGBUILD metadata commands before building.');
 
 const PreaurToolchainSchema = z.object({
-    llvm: z.boolean().optional().describe('Build with Clang/LLVM: CC=clang, CXX=clang++, llvm-ar/llvm-ranlib/llvm-nm, llvm-strip, and LLD unless mold is enabled. Installs clang, llvm, and lld in the chroot.'),
-    mold: z.boolean().optional().describe('Link with mold (-fuse-ld=mold in LDFLAGS and RUSTFLAGS). Installs mold in the chroot.'),
+    llvm: z.boolean().optional().describe('Build with Clang/LLVM: CC=clang, CXX=clang++, llvm-ar/llvm-ranlib/llvm-nm, and llvm-strip. Links with LLD in driver mode unless lld is false or mold is enabled. Installs clang and llvm in the chroot.'),
+    mold: z.union([z.boolean(), z.enum(['driver', 'replace'])]).optional().describe('Link with mold. driver (or true): -fuse-ld=mold in LDFLAGS and RUSTFLAGS. replace: point /usr/bin/ld at ld.mold in the build chroot so every link uses mold. Installs mold in the chroot.'),
+    lld: z.union([z.boolean(), z.enum(['driver', 'replace'])]).optional().describe('Link with LLD. driver (or true): -fuse-ld=lld in LDFLAGS and RUSTFLAGS. replace: point /usr/bin/ld at ld.lld in the build chroot. false disables the implicit LLD of llvm. With GCC it requires lto: off. Installs lld in the chroot.'),
     lto: z.enum(['default', 'off', 'thin', 'full']).optional().describe('C/C++ link-time optimization: default keeps the makepkg policy, off disables LTO, thin uses LLVM ThinLTO (requires llvm), full uses -flto=full (LLVM) or -flto=auto with gcc-ar/gcc-ranlib/gcc-nm (GCC).'),
     debug: z.boolean().optional().describe('Force makepkg debug packages on (true) or off (false). Unset keeps the chroot makepkg.conf policy.'),
     stripOnLink: z.boolean().optional().describe('Strip at link time (-s in LDFLAGS) and disable makepkg post-build stripping (!strip). No debug package is produced.'),
