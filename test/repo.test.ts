@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { hasBuiltPackage, resolveBuiltPackage } from '../src/repo';
+import { hasBuiltPackage, resolveBuiltPackage, withRepoLock } from '../src/repo';
 
 const tmpDirs: string[] = [];
 
@@ -80,5 +80,29 @@ describe('resolveBuiltPackage', () => {
             'foo-tools',
             baseDir
         )).resolves.toBe(pkgPath);
+    });
+});
+
+describe('withRepoLock', () => {
+    test('runs repository updates one at a time', async () => {
+        let active = 0;
+        let maxActive = 0;
+        const order: number[] = [];
+
+        await Promise.all([0, 1, 2, 3].map(i => withRepoLock(async () => {
+            active++;
+            maxActive = Math.max(maxActive, active);
+            await new Promise(resolve => setTimeout(resolve, 5));
+            order.push(i);
+            active--;
+        })));
+
+        expect(maxActive).toBe(1);
+        expect(order).toEqual([0, 1, 2, 3]);
+    });
+
+    test('releases the lock when the work throws', async () => {
+        await expect(withRepoLock(async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+        await expect(withRepoLock(async () => 'next')).resolves.toBe('next');
     });
 });

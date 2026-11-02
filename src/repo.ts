@@ -5,8 +5,24 @@ import * as path from 'node:path';
 import type { PreaurRepo } from './config';
 import type { PacmanVersion } from './pacman_version';
 import { packageArtifactPrefix } from './pacman_version';
+import { Semaphore } from './semaphore';
 
 const PACKAGE_ARTIFACT_EXT = '.pkg.tar.zst';
+
+// Builds run in parallel, but the repository database must be updated by one
+// writer at a time. Upstream repo-add aborts when <db>.lck is held, and some
+// repo-add implementations ignore the lock entirely, so concurrent runs can
+// corrupt or delete the database. Only in-process serialization is provided.
+const repoLock = new Semaphore(1);
+
+export async function withRepoLock<T>(work: () => Promise<T>): Promise<T> {
+    await repoLock.acquire();
+    try {
+        return await work();
+    } finally {
+        repoLock.release();
+    }
+}
 
 function parsePackageArtifactFile(file: string): { pkgname: string; pkgver: string; pkgrel: string; arch: string } | undefined {
     if (!file.endsWith(PACKAGE_ARTIFACT_EXT)) return undefined;
@@ -76,6 +92,14 @@ export async function manageRepository(
     repoConfig: PreaurRepo,
     pkgbuildDirectory: string,
     baseDir: string = process.cwd()
+): Promise<void> {
+    await withRepoLock(() => addArtifactsToRepository(repoConfig, pkgbuildDirectory, baseDir));
+}
+
+async function addArtifactsToRepository(
+    repoConfig: PreaurRepo,
+    pkgbuildDirectory: string,
+    baseDir: string
 ): Promise<void> {
     const repoDir = path.resolve(baseDir, 'repo', repoConfig.name);
 
