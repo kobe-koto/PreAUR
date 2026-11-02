@@ -14,7 +14,7 @@ import { initMainLogger, createTaskLogger, getSessionLogDir, getTaskLogPath, log
 import { Semaphore } from './semaphore';
 import { ChrootPool } from './chroot_pool';
 import { describeToolchain, isDefaultToolchain, resolveToolchain, toolchainPackages, toolchainScripts, writeToolchainDropIn } from './toolchain';
-import { VersionStore } from './version_store';
+import { VersionStore, pruneOrphanVersions } from './version_store';
 import { runApprovalCheck } from './approval';
 import { runPackageVersionCheck, type PackageBuildPlan } from './package_check';
 import { ensurePackageLogDir } from './workdirs';
@@ -68,6 +68,18 @@ program
 
             const versionStore = new VersionStore(process.cwd());
             await versionStore.load();
+
+            // Use the full package list: with -p, packagesToProcess holds only one package.
+            const orphanSnapshot = await projectGit?.snapshotData();
+            const orphanVersions = pruneOrphanVersions(versionStore, config.packages.map(p => p.pkgname));
+            if (orphanVersions.length > 0) {
+                const names = orphanVersions.map(([pkgname]) => pkgname).join(', ');
+                console.log(PreaurMessager(`Removing versions.json entries for packages no longer in config: ${names}`));
+                await versionStore.save();
+                if (orphanSnapshot) {
+                    await projectGit?.commitDataChanges(orphanSnapshot);
+                }
+            }
 
             const approvalSnapshot = await projectGit?.snapshotData();
             let approvedPackages: typeof packagesToProcess;

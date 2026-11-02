@@ -42,10 +42,34 @@ export class VersionStore {
         return Object.entries(this.data);
     }
 
+    delete(pkgname: string): boolean {
+        if (!Object.hasOwn(this.data, pkgname)) return false;
+        delete this.data[pkgname];
+        return true;
+    }
+
     set(pkgname: string, info: VersionInfo) {
         this.data[pkgname] = {
             ...this.data[pkgname],
             ...info,
         };
     }
+}
+
+/**
+ * Remove entries whose key is not a configured pkgname and return them.
+ * configuredNames must come from the full config.packages list, not a
+ * filtered subset (such as -p), or every other package would be pruned.
+ * The store is modified in memory only; the caller saves it.
+ */
+export function pruneOrphanVersions(
+    store: VersionStore,
+    configuredNames: Iterable<string>
+): Array<[string, VersionInfo]> {
+    const configured = new Set(configuredNames);
+    const orphans = store.entries().filter(([pkgname]) => !configured.has(pkgname));
+    for (const [pkgname] of orphans) {
+        store.delete(pkgname);
+    }
+    return orphans;
 }
