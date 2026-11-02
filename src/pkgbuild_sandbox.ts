@@ -6,17 +6,24 @@ import * as path from 'node:path';
 import type { PreaurPkgbuildSandboxConfig } from './config';
 import { envAssignments, shellQuote, type EnvPair, type EnvPairs } from './env';
 import { updatePkgBuildWithOps, type PkgBuildData, type PkgBuildParser } from './pkgbuild';
-import { resolveDevtoolsBuildTarget } from './chroot_pacman';
+import { DEVTOOLS_DIR, resolveBasePacmanConfig, resolveDevtoolsBuildTarget } from './chroot_pacman';
 import type { PackageWorkDirs } from './workdirs';
 import { constructMessager } from './logger';
 
 const SANDBOX_PKG_DIR = '/mnt/preaur-pkg';
 const DEFAULT_SANDBOX_COMMAND = 'systemd-nspawn';
 const DEFAULT_SANDBOX_USER = 'preaur';
-const INIT_PKG_NAME = 'preaur-chroot-init';
+const DEFAULT_METADATA_ROOT_DIR = '/var/lib/preaur/metadata';
+const DEVTOOLS_CHROOTS_DIR = '/var/lib/archbuild';
+const HOST_MIRRORLIST = '/etc/pacman.d/mirrorlist';
+const CHROOT_PACMAN_CACHE = '/var/cache/pacman/pkg';
+const SANDBOX_HOME = '/tmp/preaur-home';
+const SANDBOX_GNUPG_HOME = '/tmp/preaur-gnupg';
 const VERSION_OUTPUT_BEGIN = '__PREAUR_VERSION_BEGIN__';
 const VERSION_OUTPUT_END = '__PREAUR_VERSION_END__';
-const UPDPKGSUMS_PACKAGES = ['pacman-contrib', 'git'];
+// Tools baked into the dedicated metadata root so individual metadata commands
+// never have to install anything.
+const METADATA_ROOT_BASE_PACKAGES = ['base-devel', 'git', 'pacman-contrib'];
 
 // makepkg maps VCS source prefixes (e.g. git+https://) to these tools. Because
 // `makepkg -odc` skips dependency checks, the PKGBUILD's makedepends do not get
@@ -30,7 +37,14 @@ const VCS_SOURCE_PACKAGES: Record<string, string> = {
 };
 
 const PkgbuildSandboxMessager = constructMessager('PKGBUILD Sandbox');
-const chrootInitLocks = new Map<string, Promise<void>>();
+
+interface MetadataRootState {
+    prepared: boolean;
+    installed: Set<string>;
+    chain: Promise<void>;
+}
+
+const metadataRootStates = new Map<string, MetadataRootState>();
 
 export interface PkgbuildSandboxOptions {
     config?: PreaurPkgbuildSandboxConfig;
@@ -71,9 +85,14 @@ export function resolvePkgbuildSandboxOptions(options: PkgbuildSandboxOptions): 
     const enabled = options.config?.enabled ?? true;
     if (!enabled) return undefined;
 
-    const root = options.config?.root ?? deriveDevtoolsChrootRoot(options.builder);
-    if (!root) {
+    const configuredRoot = options.config?.root ?? deriveMetadataRoot(options.builder);
+    if (!configuredRoot) {
         throw new Error(`PKGBUILD sandbox root could not be derived from builder "${options.builder}". Set config.pkgbuildSandbox.root or disable config.pkgbuildSandbox.enabled.`);
+    }
+
+    const root = path.resolve(configuredRoot);
+    if (isInsideDir(root, DEVTOOLS_CHROOTS_DIR)) {
+        throw new Error(`PKGBUILD sandbox root ${root} is inside ${DEVTOOLS_CHROOTS_DIR}. PreAUR installs metadata tools into the sandbox root, so it must be a dedicated chroot and not a devtools build chroot. Remove config.pkgbuildSandbox.root to use the default ${DEFAULT_METADATA_ROOT_DIR}/<repo>-<arch>.`);
     }
 
     return {
@@ -90,14 +109,23 @@ export function resolvePkgbuildSandboxOptions(options: PkgbuildSandboxOptions): 
     };
 }
 
-function deriveDevtoolsChrootRoot(builder: string): string | undefined {
+function deriveMetadataRoot(builder: string): string | undefined {
+    const target = resolveBuilderTarget(builder);
+    if (!target) return undefined;
+
+    return path.resolve(DEFAULT_METADATA_ROOT_DIR, `${target.repo}-${target.arch}`);
+}
+
+function resolveBuilderTarget(builder: string): { repo: string; arch: string } | undefined {
     const [builderCmd] = builder.split(' ');
     if (!builderCmd) return undefined;
 
-    const target = resolveDevtoolsBuildTarget(builderCmd);
-    if (!target) return undefined;
+    return resolveDevtoolsBuildTarget(builderCmd);
+}
 
-    return path.resolve('/var/lib/archbuild', `${target.repo}-${target.arch}`, 'root');
+function isInsideDir(target: string, dir: string): boolean {
+    const relative = path.relative(dir, target);
+    return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
 export async function parsePkgBuildInSandbox(
@@ -193,7 +221,6 @@ export async function updatePkgBuildInSandbox(
                 sandbox,
                 workDirs,
                 command: 'updpkgsums',
-                packages: UPDPKGSUMS_PACKAGES,
             }).then(() => undefined),
         }
     );
@@ -272,6 +299,7 @@ function parseOptionalNonNegativeInt(value: string | undefined, field: string, c
 }
 
 async function runSandboxCommand(options: SandboxRunOptions): Promise<string> {
+    await prepareMetadataRoot(options.sandbox, options.packages ?? []);
     const plan = await buildPkgbuildSandboxCommand(options);
     const rootInfo = options.sandbox.ephemeral
         ? `temporary copy of ${options.sandbox.root}`
@@ -316,107 +344,231 @@ export async function buildPkgbuildSandboxCommand(options: SandboxRunOptions): P
     // Dropping it avoids creating per-package log directories for packages that are
     // only checked and never built; the real build creates it before starting.
     const env = options.env?.filter(([key]) => key !== 'LOGDEST');
-    await ensureSandboxRoot(options.sandbox);
     await ensureSandboxEnvDirs(env);
 
     const envPairs = sandboxEnvPairs(env);
-    const packages = mergePackages(options.sandbox.packages, options.packages);
     const nspawnArgs = [
         '--quiet',
         `--directory=${options.sandbox.root}`,
         ...(options.sandbox.ephemeral ? ['--ephemeral'] : []),
         `--bind=${pkgDir}:${SANDBOX_PKG_DIR}`,
         `--chdir=${SANDBOX_PKG_DIR}`,
-        '--setenv=HOME=/tmp/preaur-home',
-        '--setenv=GNUPGHOME=/tmp/preaur-gnupg',
+        `--setenv=HOME=${SANDBOX_HOME}`,
+        `--setenv=GNUPGHOME=${SANDBOX_GNUPG_HOME}`,
         ...envAssignments(envPairs).map(item => `--setenv=${item}`),
         ...sandboxEnvBinds(env),
         ...(options.sandbox.network ? [] : ['--private-network']),
         '/bin/bash',
         '-lc',
-        sandboxEntrypointCommand(options.sandbox.user, options.command, envPairs, packages),
+        sandboxEntrypointCommand(options.sandbox.user, options.command, envPairs),
     ];
 
-    if (shouldUseSudo(options.sandbox)) {
+    return sandboxCommandPlan(options.sandbox, nspawnArgs);
+}
+
+function sandboxCommandPlan(sandbox: ResolvedPkgbuildSandboxOptions, nspawnArgs: string[]): PkgbuildSandboxCommandPlan {
+    if (shouldUseSudo(sandbox)) {
         return {
             cmd: 'sudo',
-            args: [options.sandbox.command, ...nspawnArgs],
+            args: [sandbox.command, ...nspawnArgs],
             env: cleanHostEnv(),
         };
     }
 
     return {
-        cmd: options.sandbox.command,
+        cmd: sandbox.command,
         args: nspawnArgs,
         env: cleanHostEnv(),
     };
 }
 
-async function ensureSandboxRoot(sandbox: ResolvedPkgbuildSandboxOptions): Promise<void> {
-    try {
-        await fs.access(sandbox.root);
-        return;
-    } catch (e: any) {
-        if (e.code !== 'ENOENT') throw e;
+/**
+ * Packages installed in the dedicated metadata root: the PKGBUILD tooling
+ * PreAUR needs plus `pkgbuildSandbox.packages`.
+ */
+export function metadataRootPackages(sandbox: ResolvedPkgbuildSandboxOptions): string[] {
+    return mergePackages(METADATA_ROOT_BASE_PACKAGES, sandbox.packages);
+}
+
+/**
+ * Make sure the persistent metadata root exists, is updated once per PreAUR
+ * process, and contains the requested packages. Metadata commands then run in
+ * disposable views of this root without installing anything themselves.
+ */
+async function prepareMetadataRoot(sandbox: ResolvedPkgbuildSandboxOptions, packages: string[]): Promise<void> {
+    const state = metadataRootState(sandbox.root);
+    const isReady = () => state.prepared && packages.every(pkg => state.installed.has(pkg));
+    if (isReady()) return;
+
+    const run = state.chain.then(async () => {
+        if (!state.prepared) {
+            await ensureMetadataRootExists(sandbox);
+            const basePackages = metadataRootPackages(sandbox);
+            try {
+                await runMetadataRootMaintenance(sandbox, basePackages, true);
+            } catch (e: any) {
+                // Metadata commands can usually still run against a stale root,
+                // so an update failure (for example, no network) is not fatal.
+                console.warn(PkgbuildSandboxMessager(`Failed to update metadata chroot ${sandbox.root}; continuing with the existing root: ${e.message}`));
+            }
+            for (const pkg of basePackages) state.installed.add(pkg);
+            state.prepared = true;
+        }
+
+        const missing = mergePackages(packages).filter(pkg => !state.installed.has(pkg));
+        if (missing.length > 0) {
+            await runMetadataRootMaintenance(sandbox, missing, false);
+            for (const pkg of missing) state.installed.add(pkg);
+        }
+    });
+    state.chain = run.catch(() => undefined);
+    await run;
+}
+
+function metadataRootState(root: string): MetadataRootState {
+    let state = metadataRootStates.get(root);
+    if (!state) {
+        state = { prepared: false, installed: new Set(), chain: Promise.resolve() };
+        metadataRootStates.set(root, state);
     }
+
+    return state;
+}
+
+async function ensureMetadataRootExists(sandbox: ResolvedPkgbuildSandboxOptions): Promise<void> {
+    if (await pathExists(sandbox.root)) return;
 
     if (!sandbox.initRoot) {
         throw new Error(`PKGBUILD sandbox root does not exist: ${sandbox.root}`);
     }
 
-    let init = chrootInitLocks.get(sandbox.root);
-    if (!init) {
-        init = initializeSandboxRoot(sandbox)
-            .finally(() => {
-                chrootInitLocks.delete(sandbox.root);
-            });
-        chrootInitLocks.set(sandbox.root, init);
+    const plan = await buildMetadataRootInitCommand(sandbox);
+    console.log(PkgbuildSandboxMessager(`Creating metadata chroot ${sandbox.root} with mkarchroot...`));
+    try {
+        await runLoggedCommand(plan.cmd, plan.args, 'Metadata chroot creation');
+    } catch (e) {
+        // Another PreAUR process may have created the root concurrently.
+        if (!await pathExists(sandbox.root)) throw e;
     }
 
-    await init;
     await fs.access(sandbox.root);
 }
 
-async function initializeSandboxRoot(sandbox: ResolvedPkgbuildSandboxOptions): Promise<void> {
-    const workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'preaur-chroot-init-'));
+async function pathExists(target: string): Promise<boolean> {
     try {
-        await fs.writeFile(path.join(workDir, 'PKGBUILD'), renderChrootInitPkgbuild(), 'utf8');
-        const plan = buildChrootInitCommand(sandbox.builder);
-        console.log(PkgbuildSandboxMessager(`Initializing missing chroot root ${sandbox.root} with ${plan.cmd}...`));
-        await runLoggedCommand(plan.cmd, plan.args, workDir);
-    } finally {
-        await fs.rm(workDir, { recursive: true, force: true });
+        await fs.access(target);
+        return true;
+    } catch (e: any) {
+        if (e.code === 'ENOENT') return false;
+        throw e;
     }
 }
 
-export function renderChrootInitPkgbuild(): string {
-    return [
-        `pkgname=${INIT_PKG_NAME}`,
-        'pkgver=1',
-        'pkgrel=1',
-        "pkgdesc='PreAUR generated chroot initialization package'",
-        "arch=('any')",
-        'package() {',
-        '  :',
-        '}',
-        '',
-    ].join('\n');
-}
-
-export function buildChrootInitCommand(builder: string): { cmd: string; args: string[] } {
-    const [cmd, ...args] = builder.split(' ');
-    if (!cmd || !cmd.endsWith('-build')) {
-        throw new Error(`Cannot initialize PKGBUILD sandbox root with non-devtools builder: ${builder}`);
+/**
+ * Build the devtools `mkarchroot` command that creates the dedicated metadata
+ * root, mirroring how `archbuild` creates its build root.
+ */
+export async function buildMetadataRootInitCommand(
+    sandbox: ResolvedPkgbuildSandboxOptions,
+    devtoolsDir: string = DEVTOOLS_DIR,
+    hostArch: string = os.machine(),
+): Promise<{ cmd: string; args: string[] }> {
+    const [builderCmd] = sandbox.builder.split(' ');
+    const target = resolveBuilderTarget(sandbox.builder);
+    if (!builderCmd || !target) {
+        throw new Error(`Cannot initialize PKGBUILD sandbox root with non-devtools builder: ${sandbox.builder}. Create ${sandbox.root} manually or use a devtools *-build builder.`);
     }
 
-    return { cmd, args };
+    const pacmanConfig = await resolveBasePacmanConfig(builderCmd, devtoolsDir);
+    const makepkgConfig = path.join(devtoolsDir, 'makepkg.conf.d', `${target.arch}.conf`);
+    const packages = mergePackages(
+        target.repo.startsWith('multilib') ? ['base-devel', 'multilib-devel'] : [],
+        metadataRootPackages(sandbox),
+    );
+    const mkarchrootArgs = ['-C', pacmanConfig, '-M', makepkgConfig, sandbox.root, ...packages];
+
+    const setArch = await resolveSetArch(target.arch, devtoolsDir);
+    if (setArch === hostArch) {
+        return { cmd: 'mkarchroot', args: mkarchrootArgs };
+    }
+
+    return { cmd: 'setarch', args: [setArch, 'mkarchroot', ...mkarchrootArgs] };
 }
 
-async function runLoggedCommand(cmd: string, args: string[], cwd: string): Promise<void> {
+async function resolveSetArch(arch: string, devtoolsDir: string): Promise<string> {
+    try {
+        const alias = await fs.readFile(path.join(devtoolsDir, 'setarch-aliases.d', arch), 'utf8');
+        return alias.trim() || arch;
+    } catch (e: any) {
+        if (e.code === 'ENOENT') return arch;
+        throw e;
+    }
+}
+
+async function runMetadataRootMaintenance(sandbox: ResolvedPkgbuildSandboxOptions, packages: string[], refresh: boolean): Promise<void> {
+    const plan = buildMetadataRootMaintenanceCommand(sandbox, packages, {
+        refresh,
+        cacheDir: await resolveHostPacmanCacheDir(),
+        mirrorlist: await pathExists(HOST_MIRRORLIST) ? HOST_MIRRORLIST : undefined,
+    });
+    const action = refresh ? 'Updating' : `Installing ${packages.join(' ')} into`;
+    console.log(PkgbuildSandboxMessager(`${action} metadata chroot ${sandbox.root}...`));
+    await runLoggedCommand(plan.cmd, plan.args, 'Metadata chroot maintenance', plan.env);
+}
+
+/**
+ * Build the command that updates the persistent metadata root or installs
+ * extra packages into it. Runs directly on the root (not ephemeral) with the
+ * host package cache and mirrorlist, like devtools' arch-nspawn.
+ */
+export function buildMetadataRootMaintenanceCommand(
+    sandbox: ResolvedPkgbuildSandboxOptions,
+    packages: string[],
+    options: { refresh: boolean; cacheDir?: string; mirrorlist?: string },
+): PkgbuildSandboxCommandPlan {
+    const quotedPackages = mergePackages(packages).map(shellQuote).join(' ');
+    const pacmanSteps = options.refresh
+        ? [
+            'pacman -Sy --needed --noconfirm archlinux-keyring',
+            `pacman -Su --needed --noconfirm ${quotedPackages}`,
+        ]
+        : [`pacman -S --needed --noconfirm ${quotedPackages}`];
+
+    const nspawnArgs = [
+        '--quiet',
+        `--directory=${sandbox.root}`,
+        ...(options.cacheDir ? [`--bind=${options.cacheDir}:${CHROOT_PACMAN_CACHE}`] : []),
+        ...(options.mirrorlist ? [`--bind-ro=${options.mirrorlist}:${HOST_MIRRORLIST}`] : []),
+        '/bin/bash',
+        '-lc',
+        [
+            'set -e',
+            ...pacmanSteps,
+            ...(options.refresh ? ensureSandboxUserScript(sandbox.user) : []),
+        ].join('\n'),
+    ];
+
+    return sandboxCommandPlan(sandbox, nspawnArgs);
+}
+
+async function resolveHostPacmanCacheDir(): Promise<string | undefined> {
+    const output = await new Promise<string>((resolve) => {
+        const child = spawn('pacman-conf', ['CacheDir'], { stdio: ['ignore', 'pipe', 'ignore'] });
+        let stdout = '';
+        child.stdout?.on('data', chunk => { stdout += chunk.toString(); });
+        child.on('close', code => resolve(code === 0 ? stdout : ''));
+        child.on('error', () => resolve(''));
+    });
+    const cacheDir = output.split('\n').map(line => line.trim()).find(Boolean);
+    if (cacheDir && await pathExists(cacheDir)) return cacheDir;
+
+    return await pathExists(CHROOT_PACMAN_CACHE) ? CHROOT_PACMAN_CACHE : undefined;
+}
+
+async function runLoggedCommand(cmd: string, args: string[], label: string, env: EnvPair[] = cleanHostEnv()): Promise<void> {
     await new Promise<void>((resolve, reject) => {
         const child = spawn(cmd, args, {
-            cwd,
-            env: Object.fromEntries(cleanHostEnv()),
+            env: Object.fromEntries(env),
             stdio: ['ignore', 'pipe', 'pipe'],
         });
 
@@ -433,7 +585,7 @@ async function runLoggedCommand(cmd: string, args: string[], cwd: string): Promi
                 return;
             }
 
-            reject(new Error(`Chroot root initialization failed with exit code ${code}: ${stderr.trim()}`));
+            reject(new Error(`${label} failed with exit code ${code}: ${stderr.trim()}`));
         });
 
         child.on('error', reject);
@@ -444,33 +596,42 @@ function shouldUseSudo(sandbox: ResolvedPkgbuildSandboxOptions): boolean {
     return sandbox.sudo && typeof process.getuid === 'function' && process.getuid() !== 0;
 }
 
-function sandboxEntrypointCommand(user: string, command: string, envPairs: EnvPairs, packages: string[]): string {
-    const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
-    const gid = typeof process.getgid === 'function' ? process.getgid() : uid;
+function hostUid(): number {
+    return typeof process.getuid === 'function' ? process.getuid() : 1000;
+}
+
+function ensureSandboxUserScript(user: string): string[] {
+    const uid = hostUid();
     const quotedUser = shellQuote(user);
-    const quotedHome = shellQuote('/tmp/preaur-home');
-    const quotedGnupgHome = shellQuote('/tmp/preaur-gnupg');
-    const runCommand = `cd ${shellQuote(SANDBOX_PKG_DIR)} && ${command}`;
-    const commandEnv = [
-        'HOME=/tmp/preaur-home',
-        'GNUPGHOME=/tmp/preaur-gnupg',
-        ...envAssignments(envPairs),
-    ].map(shellQuote).join(' ');
-    const packageInstall = packages.length > 0
-        ? [`pacman -Sy --needed --noconfirm ${packages.map(shellQuote).join(' ')}`]
-        : [];
 
     return [
-        'set -e',
-        ...packageInstall,
         `if id -u ${quotedUser} >/dev/null 2>&1; then`,
         `  if [ "$(id -u ${quotedUser})" != "${uid}" ]; then`,
         '    echo "PreAUR sandbox user exists with a different UID; set config.pkgbuildSandbox.user to a free username." >&2',
         '    exit 1',
         '  fi',
         'else',
-        `  useradd -M -u ${uid} -d ${quotedHome} -s /bin/bash ${quotedUser}`,
+        `  useradd -M -u ${uid} -d ${shellQuote(SANDBOX_HOME)} -s /bin/bash ${quotedUser}`,
         'fi',
+    ];
+}
+
+function sandboxEntrypointCommand(user: string, command: string, envPairs: EnvPairs): string {
+    const uid = hostUid();
+    const gid = typeof process.getgid === 'function' ? process.getgid() : uid;
+    const quotedUser = shellQuote(user);
+    const quotedHome = shellQuote(SANDBOX_HOME);
+    const quotedGnupgHome = shellQuote(SANDBOX_GNUPG_HOME);
+    const runCommand = `cd ${shellQuote(SANDBOX_PKG_DIR)} && ${command}`;
+    const commandEnv = [
+        `HOME=${SANDBOX_HOME}`,
+        `GNUPGHOME=${SANDBOX_GNUPG_HOME}`,
+        ...envAssignments(envPairs),
+    ].map(shellQuote).join(' ');
+
+    return [
+        'set -e',
+        ...ensureSandboxUserScript(user),
         `mkdir -p ${quotedHome} ${quotedGnupgHome}`,
         `chown ${uid}:${gid} ${quotedHome} ${quotedGnupgHome} 2>/dev/null || chown ${uid} ${quotedHome} ${quotedGnupgHome}`,
         `runuser -u ${quotedUser} -- env ${commandEnv} bash -lc ${shellQuote(runCommand)}`,

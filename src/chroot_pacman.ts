@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { PreaurChrootPacmanConfig, PreaurChrootPacmanRepository } from './config';
 
-const DEVTOOLS_DIR = '/usr/share/devtools';
+export const DEVTOOLS_DIR = '/usr/share/devtools';
 
 function safePathSegment(value: string): string {
     return value.replace(/[\/\\\s]+/g, '_');
@@ -37,7 +37,7 @@ export function resolveDevtoolsBuildTarget(builderCmd: string): { repo: string; 
     };
 }
 
-async function resolveBasePacmanConfig(builderCmd: string, devtoolsDir: string): Promise<string> {
+export async function resolveBasePacmanConfig(builderCmd: string, devtoolsDir: string): Promise<string> {
     const target = resolveDevtoolsBuildTarget(builderCmd);
     if (!target) {
         throw new Error(`Cannot determine devtools repository and architecture from builder: ${builderCmd}`);

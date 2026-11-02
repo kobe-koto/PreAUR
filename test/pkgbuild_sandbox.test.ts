@@ -4,12 +4,14 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import {
-    buildChrootInitCommand,
+    buildMetadataRootInitCommand,
+    buildMetadataRootMaintenanceCommand,
     buildPkgbuildSandboxCommand,
     detectVcsSourcePackages,
+    metadataRootPackages,
     parseSandboxVersionOutput,
-    renderChrootInitPkgbuild,
     resolvePkgbuildSandboxOptions,
+    type ResolvedPkgbuildSandboxOptions,
 } from '../src/pkgbuild_sandbox';
 import type { PackageWorkDirs } from '../src/workdirs';
 
@@ -21,6 +23,22 @@ async function makeDir(prefix: string): Promise<string> {
     return dir;
 }
 
+function sandboxOptions(overrides: Partial<ResolvedPkgbuildSandboxOptions> = {}): ResolvedPkgbuildSandboxOptions {
+    return {
+        enabled: true,
+        root: '/var/lib/preaur/metadata/extra-x86_64',
+        command: 'systemd-nspawn',
+        sudo: false,
+        user: 'preaur',
+        network: true,
+        ephemeral: true,
+        initRoot: true,
+        packages: [],
+        builder: 'extra-x86_64-build',
+        ...overrides,
+    };
+}
+
 afterEach(async () => {
     while (tmpDirs.length) {
         const dir = tmpDirs.pop()!;
@@ -29,13 +47,13 @@ afterEach(async () => {
 });
 
 describe('resolvePkgbuildSandboxOptions', () => {
-    test('derives the default devtools chroot root from a build wrapper', () => {
+    test('derives a dedicated metadata root from a build wrapper', () => {
         const options = resolvePkgbuildSandboxOptions({
             builder: 'extra-x86_64-build',
             workDirs: {} as PackageWorkDirs,
         });
 
-        expect(options?.root).toBe('/var/lib/archbuild/extra-x86_64/root');
+        expect(options?.root).toBe('/var/lib/preaur/metadata/extra-x86_64');
         expect(options?.command).toBe('systemd-nspawn');
         expect(options?.user).toBe('preaur');
         expect(options?.ephemeral).toBe(true);
@@ -49,6 +67,24 @@ describe('resolvePkgbuildSandboxOptions', () => {
             builder: 'makepkg --syncdeps',
             workDirs: {} as PackageWorkDirs,
         })).toThrow(/pkgbuildSandbox.root/);
+    });
+
+    test('rejects devtools build chroots as the metadata root', () => {
+        expect(() => resolvePkgbuildSandboxOptions({
+            config: { root: '/var/lib/archbuild/extra-x86_64/root' } as any,
+            builder: 'extra-x86_64-build',
+            workDirs: {} as PackageWorkDirs,
+        })).toThrow(/dedicated chroot/);
+    });
+
+    test('accepts an explicit dedicated root', () => {
+        const options = resolvePkgbuildSandboxOptions({
+            config: { root: '/srv/preaur-meta/' } as any,
+            builder: 'makepkg --syncdeps',
+            workDirs: {} as PackageWorkDirs,
+        });
+
+        expect(options?.root).toBe('/srv/preaur-meta');
     });
 });
 
@@ -99,41 +135,9 @@ describe('buildPkgbuildSandboxCommand', () => {
         expect(plan.args).not.toContain('--user=preaur');
         expect(plan.args.at(-1)).toContain('runuser -u');
         expect(plan.args.at(-1)).toContain("'SRCDEST=/mnt/preaur-srcdest'");
-        expect(plan.args.at(-1)).toContain("pacman -Sy --needed --noconfirm 'git'");
+        expect(plan.args.at(-1)).not.toContain('pacman');
         expect(plan.env.some(([key]) => key === 'GITHUB_TOKEN')).toBe(false);
         expect(await fs.stat(srcdest).then(stat => stat.isDirectory())).toBe(true);
-    });
-
-    test('installs command-specific packages in the temporary chroot', async () => {
-        const baseDir = await makeDir('preaur-sandbox-');
-        const root = path.join(baseDir, 'chroot');
-        const pkgDir = path.join(baseDir, 'pkg');
-
-        await fs.mkdir(root, { recursive: true });
-        await fs.mkdir(pkgDir, { recursive: true });
-        await fs.writeFile(path.join(pkgDir, 'PKGBUILD'), 'pkgname=demo\npkgver=1\npkgrel=1\n', 'utf8');
-
-        const plan = await buildPkgbuildSandboxCommand({
-            pkgbuildPath: path.join(pkgDir, 'PKGBUILD'),
-            sandbox: {
-                enabled: true,
-                root,
-                command: 'systemd-nspawn',
-                sudo: false,
-                user: 'preaur',
-                network: true,
-                ephemeral: true,
-                initRoot: false,
-                packages: ['git', 'pacman-contrib'],
-                builder: 'extra-x86_64-build',
-            },
-            workDirs: {} as PackageWorkDirs,
-            command: 'updpkgsums',
-            packages: ['pacman-contrib'],
-        });
-
-        expect(plan.args.at(-1)).toContain("pacman -Sy --needed --noconfirm 'git' 'pacman-contrib'");
-        expect(plan.args.at(-1)?.match(/pacman-contrib/g)?.length).toBe(1);
     });
 
     test('does not create or bind LOGDEST for metadata commands', async () => {
@@ -176,22 +180,83 @@ describe('buildPkgbuildSandboxCommand', () => {
     });
 });
 
-describe('chroot root initialization', () => {
-    test('uses the package builder for generated safe package initialization', () => {
-        expect(buildChrootInitCommand('extra-x86_64-build')).toEqual({
-            cmd: 'extra-x86_64-build',
-            args: [],
-        });
-        expect(buildChrootInitCommand('multilib-build -- --noconfirm')).toEqual({
-            cmd: 'multilib-build',
-            args: ['--', '--noconfirm'],
-        });
-        expect(() => buildChrootInitCommand('makepkg --syncdeps')).toThrow(/non-devtools builder/);
+describe('metadata root management', () => {
+    test('bakes PKGBUILD tooling and configured packages into the root', () => {
+        expect(metadataRootPackages(sandboxOptions({ packages: ['git', 'nodejs'] }))).toEqual([
+            'base-devel',
+            'git',
+            'pacman-contrib',
+            'nodejs',
+        ]);
+    });
 
-        const pkgbuild = renderChrootInitPkgbuild();
-        expect(pkgbuild).toContain('pkgname=preaur-chroot-init');
-        expect(pkgbuild).toContain('package() {');
-        expect(pkgbuild).not.toContain('source=');
+    test('creates the root with mkarchroot using the devtools configs', async () => {
+        const devtoolsDir = await makeDir('preaur-devtools-');
+        await fs.mkdir(path.join(devtoolsDir, 'pacman.conf.d'), { recursive: true });
+        await fs.writeFile(path.join(devtoolsDir, 'pacman.conf.d', 'extra.conf'), '', 'utf8');
+
+        expect(await buildMetadataRootInitCommand(sandboxOptions(), devtoolsDir, 'x86_64')).toEqual({
+            cmd: 'mkarchroot',
+            args: [
+                '-C', path.join(devtoolsDir, 'pacman.conf.d', 'extra.conf'),
+                '-M', path.join(devtoolsDir, 'makepkg.conf.d', 'x86_64.conf'),
+                '/var/lib/preaur/metadata/extra-x86_64',
+                'base-devel', 'git', 'pacman-contrib',
+            ],
+        });
+    });
+
+    test('uses setarch aliases and multilib base packages like archbuild', async () => {
+        const devtoolsDir = await makeDir('preaur-devtools-');
+        await fs.mkdir(path.join(devtoolsDir, 'pacman.conf.d'), { recursive: true });
+        await fs.mkdir(path.join(devtoolsDir, 'setarch-aliases.d'), { recursive: true });
+        await fs.writeFile(path.join(devtoolsDir, 'pacman.conf.d', 'multilib.conf'), '', 'utf8');
+        await fs.writeFile(path.join(devtoolsDir, 'setarch-aliases.d', 'x86_64'), 'x86_64\n', 'utf8');
+
+        const plan = await buildMetadataRootInitCommand(
+            sandboxOptions({ builder: 'multilib-build', root: '/var/lib/preaur/metadata/multilib-x86_64' }),
+            devtoolsDir,
+            'aarch64',
+        );
+
+        expect(plan.cmd).toBe('setarch');
+        expect(plan.args.slice(0, 2)).toEqual(['x86_64', 'mkarchroot']);
+        expect(plan.args.slice(-4)).toEqual(['base-devel', 'multilib-devel', 'git', 'pacman-contrib']);
+    });
+
+    test('refuses to create a root for non-devtools builders', async () => {
+        await expect(buildMetadataRootInitCommand(sandboxOptions({ builder: 'makepkg --syncdeps' })))
+            .rejects.toThrow(/non-devtools builder/);
+    });
+
+    test('updates the persistent root with the host cache and mirrorlist', () => {
+        const plan = buildMetadataRootMaintenanceCommand(sandboxOptions({ sudo: true }), ['base-devel', 'git'], {
+            refresh: true,
+            cacheDir: '/var/cache/pacman/pkg/',
+            mirrorlist: '/etc/pacman.d/mirrorlist',
+        });
+        const script = plan.args.at(-1)!;
+
+        expect(plan.args).toContain('--directory=/var/lib/preaur/metadata/extra-x86_64');
+        expect(plan.args).not.toContain('--ephemeral');
+        expect(plan.args).toContain('--bind=/var/cache/pacman/pkg/:/var/cache/pacman/pkg');
+        expect(plan.args).toContain('--bind-ro=/etc/pacman.d/mirrorlist:/etc/pacman.d/mirrorlist');
+        expect(script).toContain('pacman -Sy --needed --noconfirm archlinux-keyring');
+        expect(script).toContain("pacman -Su --needed --noconfirm 'base-devel' 'git'");
+        expect(script).toContain('useradd');
+    });
+
+    test('installs on-demand packages into the persistent root without a sync', () => {
+        const plan = buildMetadataRootMaintenanceCommand(sandboxOptions(), ['subversion', 'subversion'], {
+            refresh: false,
+        });
+        const script = plan.args.at(-1)!;
+
+        expect(plan.cmd).toBe('systemd-nspawn');
+        expect(script).toContain("pacman -S --needed --noconfirm 'subversion'");
+        expect(script).not.toContain('-Sy');
+        expect(script).not.toContain('useradd');
+        expect(plan.args.some(arg => arg.startsWith('--bind'))).toBe(false);
     });
 });
 

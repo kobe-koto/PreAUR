@@ -80,14 +80,14 @@ const PreaurChrootPacmanSchema = z.object({
 
 const PreaurPkgbuildSandboxSchema = z.object({
     enabled: z.boolean().default(true).describe('Run PKGBUILD metadata commands inside a chroot sandbox.'),
-    root: z.string().optional().describe('Chroot root directory. Defaults to the devtools root derived from the package builder.'),
+    root: z.string().optional().describe('Dedicated metadata chroot root managed by PreAUR. Defaults to /var/lib/preaur/metadata/<repo>-<arch> derived from the package builder. Must not be a devtools build chroot.'),
     command: z.string().default('systemd-nspawn').describe('Sandbox command used to enter the chroot.'),
     sudo: z.boolean().default(true).describe('Run the sandbox command through sudo when PreAUR is not root.'),
     user: z.string().default('preaur').describe('User used inside the chroot for makepkg commands. It is created with the host UID when missing.'),
     network: z.boolean().default(true).describe('Allow network access inside the PKGBUILD sandbox.'),
     ephemeral: z.boolean().default(true).describe('Run metadata commands in a temporary chroot copy that is discarded after the command exits.'),
-    initRoot: z.boolean().default(true).describe('Initialize a missing chroot root by running the package builder on a generated safe package.'),
-    packages: stringList('Extra packages installed in the temporary metadata chroot before running PKGBUILD commands.').default([]),
+    initRoot: z.boolean().default(true).describe('Create a missing metadata chroot root with devtools mkarchroot.'),
+    packages: stringList('Extra packages installed once into the persistent metadata chroot root, in addition to base-devel, git, and pacman-contrib.').default([]),
 }).strict().prefault({}).describe('Chroot sandbox used for PKGBUILD metadata commands before building.');
 
 const PreaurRuntimeConfigSchema = z.object({

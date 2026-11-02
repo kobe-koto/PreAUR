@@ -65,19 +65,21 @@ When `chrootPacman` is configured, PreAUR also asks `makechrootpkg` to update th
 
 PreAUR runs PKGBUILD metadata commands in a chroot sandbox by default before the package build starts. This covers `makepkg --printsrcinfo`, dynamic `pkgver()` updates, and `updpkgsums`.
 
-The sandbox uses `systemd-nspawn --ephemeral` by default, so each metadata command runs in a temporary copy of the selected chroot root and that copy is discarded when the command exits.
+Metadata commands run in a dedicated chroot root managed by PreAUR, separate from the devtools build chroot. By default the root is derived from the package builder: `extra-x86_64-build` maps to `/var/lib/preaur/metadata/extra-x86_64`.
 
-If the selected chroot root does not exist, PreAUR runs the package builder against a generated safe package so the devtools wrapper can initialize the root before metadata commands run.
+- If the root does not exist, PreAUR creates it with devtools `mkarchroot`, using the same pacman and makepkg configuration as the build chroot.
+- Once per PreAUR run, before the first metadata command, PreAUR updates the root with `pacman -Syu` and makes sure `base-devel`, `git`, `pacman-contrib`, and `pkgbuildSandbox.packages` are installed. It uses the host package cache and mirrorlist. If the update fails (for example, no network), PreAUR logs a warning and continues with the existing root.
+- VCS clients needed by dynamic `pkgver()` (such as `subversion` or `mercurial`) are installed into the root the first time they are needed and are kept for later runs.
 
-PreAUR automatically installs `pacman-contrib` and `git` in the temporary copy before running `updpkgsums`. If metadata commands need extra tools, add them to `pkgbuildSandbox.packages`; they are installed in the temporary copy only.
+Metadata commands themselves never install packages. With `ephemeral: true` (the default), each command runs in a `systemd-nspawn --ephemeral` copy of the root that is discarded when the command exits.
 
-By default, the sandbox root is derived from the package builder. For example, `extra-x86_64-build` maps to `/var/lib/archbuild/extra-x86_64/root`. You can override it explicitly:
+Because PreAUR installs tools into this root, it must not be a devtools build chroot; roots under `/var/lib/archbuild` are rejected. You can override it explicitly:
 
 ```yaml
 config:
   pkgbuildSandbox:
     enabled: true
-    root: /var/lib/archbuild/extra-x86_64/root
+    root: /var/lib/preaur/metadata/extra-x86_64
     command: systemd-nspawn
     sudo: true
     user: preaur
@@ -85,10 +87,10 @@ config:
     ephemeral: true
     initRoot: true
     packages:
-      - git
+      - nodejs
 ```
 
-If you use passwordless sudo for scheduled runs, allow the sandbox command as well as the build wrappers.
+If you use passwordless sudo for scheduled runs, allow the sandbox command and `mkarchroot` as well as the build wrappers.
 
 Packages can also request package-level pre-build setup inside the chroot. `pre-build-packages` are installed before the package build starts, and `pre-build-scripts` run as root in the chroot before the package build starts:
 
@@ -145,7 +147,7 @@ Run `sudo visudo` and append your privileges:
 ```sudoers
 Defaults:%preaur-build env_keep += "SOURCE_DATE_EPOCH SRCDEST SRCPKGDEST PKGDEST LOGDEST NPROC MAKEFLAGS PACKAGER GNUPGHOME BUILDTOOL"
 %preaur-build ALL=(ALL) NOPASSWD: /usr/bin/extra-x86_64-build, /usr/bin/multilib-build, /usr/bin/pkgctl
-%preaur-build ALL=(ALL) NOPASSWD: /usr/bin/systemd-nspawn
+%preaur-build ALL=(ALL) NOPASSWD: /usr/bin/systemd-nspawn, /usr/bin/mkarchroot
 ```
 
 ### Create user for PreAUR

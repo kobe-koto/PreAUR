@@ -72,14 +72,14 @@ Chroot sandbox used for PKGBUILD metadata commands before building.
 | Key | Required | Type | Default | Description |
 | --- | --- | --- | --- | --- |
 | `enabled` | no | boolean | true | Run PKGBUILD metadata commands inside a chroot sandbox. |
-| `root` | no | string |  | Chroot root directory. Defaults to the devtools root derived from the package builder. |
+| `root` | no | string |  | Dedicated metadata chroot root managed by PreAUR. Defaults to /var/lib/preaur/metadata/<repo>-<arch> derived from the package builder. Must not be a devtools build chroot. |
 | `command` | no | string | "systemd-nspawn" | Sandbox command used to enter the chroot. |
 | `sudo` | no | boolean | true | Run the sandbox command through sudo when PreAUR is not root. |
 | `user` | no | string | "preaur" | User used inside the chroot for makepkg commands. It is created with the host UID when missing. |
 | `network` | no | boolean | true | Allow network access inside the PKGBUILD sandbox. |
 | `ephemeral` | no | boolean | true | Run metadata commands in a temporary chroot copy that is discarded after the command exits. |
-| `initRoot` | no | boolean | true | Initialize a missing chroot root by running the package builder on a generated safe package. |
-| `packages` | no | array<string> | [] | Extra packages installed in the temporary metadata chroot before running PKGBUILD commands. |
+| `initRoot` | no | boolean | true | Create a missing metadata chroot root with devtools mkarchroot. |
+| `packages` | no | array<string> | [] | Extra packages installed once into the persistent metadata chroot root, in addition to base-devel, git, and pacman-contrib. |
 
 #### config.chrootPacman
 
