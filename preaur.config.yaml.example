@@ -28,6 +28,15 @@ config:
     # base-devel, git, and pacman-contrib are always installed.
     # packages:
     #   - nodejs
+  # Compiler/linker overrides for devtools chroot builds, applied through a
+  # generated /etc/makepkg.conf.d drop-in. Unset fields keep makepkg defaults.
+  # Packages can override any field with their own `toolchain:` block.
+  # toolchain:
+  #   llvm: true          # clang/clang++, llvm-ar/ranlib/nm, llvm-strip, lld
+  #   mold: true          # -fuse-ld=mold (replaces lld when llvm is on)
+  #   lto: "thin"         # default | off | thin (needs llvm) | full
+  #   debug: false        # false -> !debug, true -> debug
+  #   stripOnLink: false  # -s in LDFLAGS plus !strip
   # Extra git URL prefixes that should still be treated as trusted AUR mirrors
   # for ownership checks. Built-ins:
   # - ssh://aur@aur.archlinux.org/
@@ -168,6 +177,9 @@ packages:
          - /usr/bin/grub # this would be a copy of /dev/null
     repo_packages: # packages that in this repo, and should be installed before build this package
       - grub-theme-lain
+    # Per-package toolchain overrides replace config.toolchain field by field.
+    # toolchain:
+    #   lto: "off"
 
   # Debian/APT repository mapped package
   - pkgname: "visual-studio-code-bin"

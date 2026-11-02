@@ -13,6 +13,7 @@ import { manageRepository, hasBuiltPackage, resolveBuiltPackage } from './repo';
 import { initMainLogger, createTaskLogger, getSessionLogDir, getTaskLogPath, loggerContext, constructMessager } from './logger';
 import { Semaphore } from './semaphore';
 import { ChrootPool } from './chroot_pool';
+import { describeToolchain, isDefaultToolchain, resolveToolchain, toolchainPackages, writeToolchainDropIn } from './toolchain';
 import { VersionStore } from './version_store';
 import { runApprovalCheck } from './approval';
 import { runPackageVersionCheck, type PackageBuildPlan } from './package_check';
@@ -198,9 +199,19 @@ program
                                     extraPaths.push(...dummyPkgs);
                                 }
 
+                                const toolchain = resolveToolchain(config.config?.toolchain, pkg.toolchain);
+                                const customToolchain = !isDefaultToolchain(toolchain);
+                                const preBuildConfig = packagePreBuildConfig(pkg);
+                                let toolchainDropIn: string | undefined;
+                                if (customToolchain) {
+                                    console.log(PreaurMessager(`Toolchain for ${pkg.pkgname}: ${describeToolchain(toolchain)}`));
+                                    preBuildConfig.packages.push(...toolchainPackages(toolchain));
+                                    toolchainDropIn = await writeToolchainDropIn(toolchain, pkg.pkgname, workDirs.root);
+                                }
+
                                 const preBuildPkg = await createPreBuildPackage(
                                     pkg.pkgname,
-                                    packagePreBuildConfig(pkg),
+                                    preBuildConfig,
                                     loggerStream
                                 );
                                 if (preBuildPkg) {
@@ -239,6 +250,7 @@ program
                                         env,
                                         chrootPacman: config.config?.chrootPacman,
                                         baseDir: process.cwd(),
+                                        toolchainDropIn,
                                     });
 
                                     const buildTime = ((Date.now() - buildStartTime) / 1000).toFixed(1);

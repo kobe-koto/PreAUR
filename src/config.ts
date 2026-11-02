@@ -22,7 +22,9 @@ import {
     type PreaurResources,
     type PreaurRpmChecker,
     type PreaurRuntimeConfig,
+    type PreaurToolchainConfig,
 } from './config_schema';
+import { resolveToolchain, validateToolchain } from './toolchain';
 
 export type {
     PreaurChrootPacmanConfig,
@@ -41,6 +43,7 @@ export type {
     PreaurResources,
     PreaurRpmChecker,
     PreaurRuntimeConfig,
+    PreaurToolchainConfig,
 };
 
 export type LoadedPreaurPackage = PreaurPackage & { maintainer: string };
@@ -77,6 +80,10 @@ function normalizeConfig(config: PreaurRawConfig, configDir: string): PreaurConf
     normalizeProjectGitConfig(config.git);
 
     const packages = config.packages.map(pkg => normalizePackage(pkg, config.default_maintainer, maintainerIds));
+
+    for (const pkg of packages) {
+        validateToolchain(resolveToolchain(config.config?.toolchain, pkg.toolchain), `Package ${pkg.pkgname}`);
+    }
 
     return {
         ...config,

@@ -201,6 +201,68 @@ packages:
         });
     });
 
+    test('accepts global toolchain options with package overrides', async () => {
+        const configPath = await writeConfig(`
+config:
+  toolchain:
+    llvm: true
+    lto: thin
+maintainers:
+  - id: johndoe
+    name: John Doe
+    email: john@example.com
+default_maintainer: johndoe
+packages:
+  - pkgname: demo
+    toolchain:
+      mold: true
+      debug: false
+`);
+
+        const config = await loadConfig(configPath);
+
+        expect(config.config?.toolchain).toEqual({ llvm: true, lto: 'thin' });
+        expect(config.packages[0]?.toolchain).toEqual({ mold: true, debug: false });
+    });
+
+    test('rejects ThinLTO when the merged package toolchain lacks llvm', async () => {
+        const configPath = await writeConfig(`
+config:
+  toolchain:
+    llvm: true
+    lto: thin
+maintainers:
+  - id: johndoe
+    name: John Doe
+    email: john@example.com
+default_maintainer: johndoe
+packages:
+  - pkgname: fine
+  - pkgname: gcc-only
+    toolchain:
+      llvm: false
+`);
+
+        await expect(loadConfig(configPath)).rejects.toThrow(/Package gcc-only: .*requires toolchain.llvm/);
+    });
+
+    test('rejects unknown toolchain fields and LTO modes', async () => {
+        const configPath = await writeConfig(`
+config:
+  toolchain:
+    lto: fat
+maintainers:
+  - id: johndoe
+    name: John Doe
+    email: john@example.com
+default_maintainer: johndoe
+packages:
+  - pkgname: demo
+`);
+
+        await expect(loadConfig(configPath)).rejects.toThrow(/lto/);
+    });
+
     test('accepts package-level pre-build packages and scripts', async () => {
         const configPath = await writeConfig(`
 maintainers:

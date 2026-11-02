@@ -225,6 +225,39 @@
                     },
                     "additionalProperties": false,
                     "description": "Pacman configuration added to devtools chroots."
+                },
+                "toolchain": {
+                    "description": "Global toolchain options for all packages. Packages can override individual fields with their own toolchain block.",
+                    "type": "object",
+                    "properties": {
+                        "llvm": {
+                            "description": "Build with Clang/LLVM: CC=clang, CXX=clang++, llvm-ar/llvm-ranlib/llvm-nm, llvm-strip, and LLD unless mold is enabled. Installs clang, llvm, and lld in the chroot.",
+                            "type": "boolean"
+                        },
+                        "mold": {
+                            "description": "Link with mold (-fuse-ld=mold in LDFLAGS and RUSTFLAGS). Installs mold in the chroot.",
+                            "type": "boolean"
+                        },
+                        "lto": {
+                            "description": "C/C++ link-time optimization: default keeps the makepkg policy, off disables LTO, thin uses LLVM ThinLTO (requires llvm), full uses -flto=full (LLVM) or -flto=auto with gcc-ar/gcc-ranlib/gcc-nm (GCC).",
+                            "type": "string",
+                            "enum": [
+                                "default",
+                                "off",
+                                "thin",
+                                "full"
+                            ]
+                        },
+                        "debug": {
+                            "description": "Force makepkg debug packages on (true) or off (false). Unset keeps the chroot makepkg.conf policy.",
+                            "type": "boolean"
+                        },
+                        "stripOnLink": {
+                            "description": "Strip at link time (-s in LDFLAGS) and disable makepkg post-build stripping (!strip). No debug package is produced.",
+                            "type": "boolean"
+                        }
+                    },
+                    "additionalProperties": false
                 }
             },
             "additionalProperties": false,
@@ -662,6 +695,39 @@
                             "type": "string"
                         },
                         "description": "Alias for pre-build-scripts."
+                    },
+                    "toolchain": {
+                        "description": "Per-package toolchain overrides. Set fields replace config.toolchain field by field.",
+                        "type": "object",
+                        "properties": {
+                            "llvm": {
+                                "description": "Build with Clang/LLVM: CC=clang, CXX=clang++, llvm-ar/llvm-ranlib/llvm-nm, llvm-strip, and LLD unless mold is enabled. Installs clang, llvm, and lld in the chroot.",
+                                "type": "boolean"
+                            },
+                            "mold": {
+                                "description": "Link with mold (-fuse-ld=mold in LDFLAGS and RUSTFLAGS). Installs mold in the chroot.",
+                                "type": "boolean"
+                            },
+                            "lto": {
+                                "description": "C/C++ link-time optimization: default keeps the makepkg policy, off disables LTO, thin uses LLVM ThinLTO (requires llvm), full uses -flto=full (LLVM) or -flto=auto with gcc-ar/gcc-ranlib/gcc-nm (GCC).",
+                                "type": "string",
+                                "enum": [
+                                    "default",
+                                    "off",
+                                    "thin",
+                                    "full"
+                                ]
+                            },
+                            "debug": {
+                                "description": "Force makepkg debug packages on (true) or off (false). Unset keeps the chroot makepkg.conf policy.",
+                                "type": "boolean"
+                            },
+                            "stripOnLink": {
+                                "description": "Strip at link time (-s in LDFLAGS) and disable makepkg post-build stripping (!strip). No debug package is produced.",
+                                "type": "boolean"
+                            }
+                        },
+                        "additionalProperties": false
                     }
                 },
                 "required": [

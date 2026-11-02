@@ -64,6 +64,7 @@ Runtime behavior settings.
 | `trustedAurGitPrefixes` | no | array<string> |  | Git URL prefixes treated as AUR package sources. |
 | `pkgbuildSandbox` | no | object | {} | Chroot sandbox used for PKGBUILD metadata commands before building. |
 | `chrootPacman` | no | object |  | Pacman configuration added to devtools chroots. |
+| `toolchain` | no | object |  | Global toolchain options for all packages. Packages can override individual fields with their own toolchain block. |
 
 #### config.pkgbuildSandbox
 
@@ -101,6 +102,18 @@ A custom pacman repository for chroot builds.
 | `siglevel` | no | string \| array<string> |  | Repository SigLevel line. |
 | `include` | no | array<string> |  | Host files included into this repository block. |
 | `lines` | no | array<string> |  | Raw pacman.conf lines appended to this repository block. |
+
+#### config.toolchain
+
+Global toolchain options for all packages. Packages can override individual fields with their own toolchain block.
+
+| Key | Required | Type | Default | Description |
+| --- | --- | --- | --- | --- |
+| `llvm` | no | boolean |  | Build with Clang/LLVM: CC=clang, CXX=clang++, llvm-ar/llvm-ranlib/llvm-nm, llvm-strip, and LLD unless mold is enabled. Installs clang, llvm, and lld in the chroot. |
+| `mold` | no | boolean |  | Link with mold (-fuse-ld=mold in LDFLAGS and RUSTFLAGS). Installs mold in the chroot. |
+| `lto` | no | default \| off \| thin \| full |  | C/C++ link-time optimization: default keeps the makepkg policy, off disables LTO, thin uses LLVM ThinLTO (requires llvm), full uses -flto=full (LLVM) or -flto=auto with gcc-ar/gcc-ranlib/gcc-nm (GCC). |
+| `debug` | no | boolean |  | Force makepkg debug packages on (true) or off (false). Unset keeps the chroot makepkg.conf policy. |
+| `stripOnLink` | no | boolean |  | Strip at link time (-s in LDFLAGS) and disable makepkg post-build stripping (!strip). No debug package is produced. |
 
 ### resources
 
@@ -154,6 +167,7 @@ A package build entry.
 | `pre-build-scripts` | no | array<string> |  | Root scripts run in chroot before build. |
 | `pre_build_packages` | no | array<string> |  | Alias for pre-build-packages. |
 | `pre_build_scripts` | no | array<string> |  | Alias for pre-build-scripts. |
+| `toolchain` | no | object |  | Per-package toolchain overrides. Set fields replace config.toolchain field by field. |
 
 #### packages[].checker: github
 
@@ -210,3 +224,15 @@ A generated dummy dependency package.
 | `pkgver` | no | string \| number |  | Dummy package version. |
 | `pkgrel` | no | string \| number |  | Dummy package release. |
 | `files` | no | array<string> |  | Files provided by the dummy package. |
+
+#### packages[].toolchain
+
+Per-package toolchain overrides. Set fields replace config.toolchain field by field.
+
+| Key | Required | Type | Default | Description |
+| --- | --- | --- | --- | --- |
+| `llvm` | no | boolean |  | Build with Clang/LLVM: CC=clang, CXX=clang++, llvm-ar/llvm-ranlib/llvm-nm, llvm-strip, and LLD unless mold is enabled. Installs clang, llvm, and lld in the chroot. |
+| `mold` | no | boolean |  | Link with mold (-fuse-ld=mold in LDFLAGS and RUSTFLAGS). Installs mold in the chroot. |
+| `lto` | no | default \| off \| thin \| full |  | C/C++ link-time optimization: default keeps the makepkg policy, off disables LTO, thin uses LLVM ThinLTO (requires llvm), full uses -flto=full (LLVM) or -flto=auto with gcc-ar/gcc-ranlib/gcc-nm (GCC). |
+| `debug` | no | boolean |  | Force makepkg debug packages on (true) or off (false). Unset keeps the chroot makepkg.conf policy. |
+| `stripOnLink` | no | boolean |  | Strip at link time (-s in LDFLAGS) and disable makepkg post-build stripping (!strip). No debug package is produced. |

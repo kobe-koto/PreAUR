@@ -104,6 +104,49 @@ packages:
         install -Dm644 /dev/null /etc/demo-prebuild-marker
 ```
 
+#### Toolchain Options (Clang/LLVM, mold, LTO)
+
+`config.toolchain` sets compiler, linker, and makepkg build options for all packages. A package can override individual fields with its own `toolchain` block. Package fields replace global fields one by one; fields left unset fall back to the global value and then to the chroot's makepkg defaults.
+
+```yaml
+config:
+  toolchain:
+    llvm: true
+    lto: thin
+    debug: false
+
+packages:
+  - pkgname: "fast-thing"
+    toolchain:
+      mold: true          # adds mold on top of the global llvm + ThinLTO
+  - pkgname: "picky-thing"
+    toolchain:
+      llvm: false         # back to GCC for this package
+      lto: default        # and the makepkg LTO policy
+```
+
+| Field | Values | Effect |
+|---|---|---|
+| `llvm` | boolean | `CC=clang`, `CXX=clang++`, `AR=llvm-ar`, `RANLIB=llvm-ranlib`, `NM=llvm-nm`, makepkg strips with `llvm-strip`, links with LLD (`-fuse-ld=lld`) unless `mold` is on. Installs `clang`, `llvm`, and `lld`. |
+| `mold` | boolean | Adds `-fuse-ld=mold` to `LDFLAGS` and `-C link-arg=-fuse-ld=mold` to `RUSTFLAGS`. Installs `mold`. |
+| `lto` | `default`, `off`, `thin`, `full` | `default` keeps the makepkg policy. `off` sets `!lto` and removes inherited `-flto*` flags. `thin` uses `-flto=thin` and requires `llvm: true`. `full` uses `-flto=full` with LLVM, or `-flto=auto` plus `gcc-ar`/`gcc-ranlib`/`gcc-nm` with GCC. |
+| `debug` | boolean | `false` replaces `debug` with `!debug` in `OPTIONS`; `true` forces `debug`. Unset keeps the chroot policy. |
+| `stripOnLink` | boolean | Adds `-s` to `LDFLAGS` and sets `!strip`. No debug package is produced, because makepkg splits debug info during its strip step. |
+
+How it is applied:
+
+- For each build, PreAUR writes a makepkg.conf drop-in to the package work directory and bind-mounts it read-only into the devtools chroot as `/etc/makepkg.conf.d/zz-preaur-toolchain.conf` (`makechrootpkg -D`). makepkg sources it after `/etc/makepkg.conf` and the devtools drop-ins, so the chroot configuration is never edited.
+- Required tools (`clang`, `llvm`, `lld`, `mold`) are installed into the chroot through the same helper package used by `pre-build-packages`.
+- Toolchain options require a devtools `*-build` builder; other builders fail with an error.
+- `lto: thin` without `llvm` is rejected when the config is loaded, checked per package after merging.
+
+Limitations:
+
+- mold is selected with `-fuse-ld=mold`, so it only applies where the compiler driver performs the link. Build systems that invoke `ld` directly keep the default linker.
+- PKGBUILD `options` still take precedence (`!lto`, `!buildflags`, `!strip`, `!debug`), and hardcoded compilers or flags in a PKGBUILD can override these settings.
+- `lto` targets C/C++ (`CFLAGS`, `CXXFLAGS`, `LDFLAGS`); it does not configure Rust LTO.
+- Changing toolchain options does not by itself trigger a rebuild of package versions that are already built.
+
 #### Build Chroot Storage and Parallel Builds
 
 With `resources.parallel` set to N, PreAUR gives each concurrent devtools build its own chroot copy (`<user>-preaur-worker-1` … `-N` next to `/var/lib/archbuild/<repo>-<arch>/root`). devtools `archbuild` always passes `-c` to `makechrootpkg`, so **every build resets its worker copy from the clean root**. How much I/O that costs depends on the filesystem under `/var/lib/archbuild`:

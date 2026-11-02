@@ -90,6 +90,9 @@ Type: object. Required: no. Default: {}. Chroot sandbox used for PKGBUILD metada
 .TP
 .B chrootPacman
 Type: object. Required: no. Pacman configuration added to devtools chroots.
+.TP
+.B toolchain
+Type: object. Required: no. Global toolchain options for all packages. Packages can override individual fields with their own toolchain block.
 .SS
 config.pkgbuildSandbox
 Chroot sandbox used for PKGBUILD metadata commands before building.
@@ -147,6 +150,24 @@ Type: array<string>. Required: no. Host files included into this repository bloc
 .TP
 .B lines
 Type: array<string>. Required: no. Raw pacman.conf lines appended to this repository block.
+.SS
+config.toolchain
+Global toolchain options for all packages. Packages can override individual fields with their own toolchain block.
+.TP
+.B llvm
+Type: boolean. Required: no. Build with Clang/LLVM: CC=clang, CXX=clang++, llvm\-ar/llvm\-ranlib/llvm\-nm, llvm\-strip, and LLD unless mold is enabled. Installs clang, llvm, and lld in the chroot.
+.TP
+.B mold
+Type: boolean. Required: no. Link with mold (\-fuse\-ld=mold in LDFLAGS and RUSTFLAGS). Installs mold in the chroot.
+.TP
+.B lto
+Type: default | off | thin | full. Required: no. C/C++ link\-time optimization: default keeps the makepkg policy, off disables LTO, thin uses LLVM ThinLTO (requires llvm), full uses \-flto=full (LLVM) or \-flto=auto with gcc\-ar/gcc\-ranlib/gcc\-nm (GCC).
+.TP
+.B debug
+Type: boolean. Required: no. Force makepkg debug packages on (true) or off (false). Unset keeps the chroot makepkg.conf policy.
+.TP
+.B stripOnLink
+Type: boolean. Required: no. Strip at link time (\-s in LDFLAGS) and disable makepkg post\-build stripping (!strip). No debug package is produced.
 .SS
 resources
 Build and check concurrency settings.
@@ -234,6 +255,9 @@ Type: array<string>. Required: no. Alias for pre\-build\-packages.
 .TP
 .B pre_build_scripts
 Type: array<string>. Required: no. Alias for pre\-build\-scripts.
+.TP
+.B toolchain
+Type: object. Required: no. Per\-package toolchain overrides. Set fields replace config.toolchain field by field.
 .SS
 packages[].checker: github
 GitHub version checker.
@@ -330,6 +354,24 @@ Type: string | number. Required: no. Dummy package release.
 .TP
 .B files
 Type: array<string>. Required: no. Files provided by the dummy package.
+.SS
+packages[].toolchain
+Per\-package toolchain overrides. Set fields replace config.toolchain field by field.
+.TP
+.B llvm
+Type: boolean. Required: no. Build with Clang/LLVM: CC=clang, CXX=clang++, llvm\-ar/llvm\-ranlib/llvm\-nm, llvm\-strip, and LLD unless mold is enabled. Installs clang, llvm, and lld in the chroot.
+.TP
+.B mold
+Type: boolean. Required: no. Link with mold (\-fuse\-ld=mold in LDFLAGS and RUSTFLAGS). Installs mold in the chroot.
+.TP
+.B lto
+Type: default | off | thin | full. Required: no. C/C++ link\-time optimization: default keeps the makepkg policy, off disables LTO, thin uses LLVM ThinLTO (requires llvm), full uses \-flto=full (LLVM) or \-flto=auto with gcc\-ar/gcc\-ranlib/gcc\-nm (GCC).
+.TP
+.B debug
+Type: boolean. Required: no. Force makepkg debug packages on (true) or off (false). Unset keeps the chroot makepkg.conf policy.
+.TP
+.B stripOnLink
+Type: boolean. Required: no. Strip at link time (\-s in LDFLAGS) and disable makepkg post\-build stripping (!strip). No debug package is produced.
 .SH GENERATED FROM
 This page is generated from the Zod configuration schema by \fBbun run gen-schema\fR.
 .SH SEE ALSO

@@ -5,6 +5,7 @@ import * as fs from 'node:fs';
 import type { PreaurChrootPacmanConfig, PreaurResources } from './config';
 import { envAssignments, filterEnvPairs, mergeEnvPairs, type EnvPair, type EnvPairs } from './env';
 import { hasChrootPacmanConfig, writeChrootPacmanConfig } from './chroot_pacman';
+import { TOOLCHAIN_DROPIN_CHROOT_PATH } from './toolchain';
 
 const DEVTOOLS_IGNORED_ENV_KEYS = new Set([
     'BUILDDIR',
@@ -41,6 +42,8 @@ export interface BuildOptions {
     env?: EnvPairs;
     chrootPacman?: PreaurChrootPacmanConfig;
     baseDir?: string;
+    /** Host path of the generated makepkg.conf toolchain drop-in. */
+    toolchainDropIn?: string;
 }
 
 export interface BuildCommandPlan {
@@ -55,6 +58,7 @@ export function buildCommandPlan(
         dummyPkgs?: string[];
         chrootWorker?: string;
         chrootPacmanConfig?: string;
+        toolchainDropIn?: string;
     } = {}
 ): BuildCommandPlan {
     const [cmd, ...args] = builder.split(' ');
@@ -73,6 +77,13 @@ export function buildCommandPlan(
 
     if (opts.chrootPacmanConfig && isDevtoolsBuild) {
         makechrootpkgArgs.push('-u', '-D', `${opts.chrootPacmanConfig}:/etc/pacman.conf`);
+    }
+
+    if (opts.toolchainDropIn) {
+        if (!isDevtoolsBuild) {
+            throw new Error(`Toolchain options require a devtools *-build builder; "${builder}" cannot load a makepkg.conf drop-in.`);
+        }
+        makechrootpkgArgs.push('-D', `${opts.toolchainDropIn}:${TOOLCHAIN_DROPIN_CHROOT_PATH}`);
     }
 
     // Inject dummy/repo dependency packages via -I.
@@ -137,6 +148,7 @@ export async function buildPackage(opts: BuildOptions): Promise<void> {
         env: extraEnv,
         chrootPacman,
         baseDir = process.cwd(),
+        toolchainDropIn,
     } = opts;
 
     const nproc = calculateNproc(resources?.cpu);
@@ -153,7 +165,7 @@ export async function buildPackage(opts: BuildOptions): Promise<void> {
         })
         : undefined;
 
-    const buildPlan = buildCommandPlan(builder, { dummyPkgs, chrootWorker, chrootPacmanConfig });
+    const buildPlan = buildCommandPlan(builder, { dummyPkgs, chrootWorker, chrootPacmanConfig, toolchainDropIn });
     const { cmd, args, isDevtoolsBuild } = buildPlan;
 
     return new Promise((resolve, reject) => {

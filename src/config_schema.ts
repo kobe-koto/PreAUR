@@ -90,11 +90,20 @@ const PreaurPkgbuildSandboxSchema = z.object({
     packages: stringList('Extra packages installed once into the persistent metadata chroot root, in addition to base-devel, git, and pacman-contrib.').default([]),
 }).strict().prefault({}).describe('Chroot sandbox used for PKGBUILD metadata commands before building.');
 
+const PreaurToolchainSchema = z.object({
+    llvm: z.boolean().optional().describe('Build with Clang/LLVM: CC=clang, CXX=clang++, llvm-ar/llvm-ranlib/llvm-nm, llvm-strip, and LLD unless mold is enabled. Installs clang, llvm, and lld in the chroot.'),
+    mold: z.boolean().optional().describe('Link with mold (-fuse-ld=mold in LDFLAGS and RUSTFLAGS). Installs mold in the chroot.'),
+    lto: z.enum(['default', 'off', 'thin', 'full']).optional().describe('C/C++ link-time optimization: default keeps the makepkg policy, off disables LTO, thin uses LLVM ThinLTO (requires llvm), full uses -flto=full (LLVM) or -flto=auto with gcc-ar/gcc-ranlib/gcc-nm (GCC).'),
+    debug: z.boolean().optional().describe('Force makepkg debug packages on (true) or off (false). Unset keeps the chroot makepkg.conf policy.'),
+    stripOnLink: z.boolean().optional().describe('Strip at link time (-s in LDFLAGS) and disable makepkg post-build stripping (!strip). No debug package is produced.'),
+}).strict().describe('Compiler, linker, and makepkg build option overrides applied to devtools chroot builds through a makepkg.conf drop-in.');
+
 const PreaurRuntimeConfigSchema = z.object({
     pkgbuildParser: z.enum(['native', 'makepkg']).optional().describe('PKGBUILD parser implementation.'),
     trustedAurGitPrefixes: stringList('Git URL prefixes treated as AUR package sources.').optional(),
     pkgbuildSandbox: PreaurPkgbuildSandboxSchema.optional(),
     chrootPacman: PreaurChrootPacmanSchema.optional(),
+    toolchain: PreaurToolchainSchema.optional().describe('Global toolchain options for all packages. Packages can override individual fields with their own toolchain block.'),
 }).strict().describe('Runtime behavior settings.');
 
 const PreaurCheckerBaseShape = {
@@ -158,6 +167,7 @@ const PreaurPackageSchema = z.object({
     'pre-build-scripts': stringList('Root scripts run in chroot before build.').optional(),
     pre_build_packages: stringList('Alias for pre-build-packages.').optional(),
     pre_build_scripts: stringList('Alias for pre-build-scripts.').optional(),
+    toolchain: PreaurToolchainSchema.optional().describe('Per-package toolchain overrides. Set fields replace config.toolchain field by field.'),
 }).strict().describe('A package build entry.');
 
 export const PreaurRawConfigSchema = z.object({
@@ -182,6 +192,7 @@ export type PreaurProjectGitPushConfig = z.output<typeof PreaurProjectGitPushSch
 export type PreaurPkgbuildSandboxConfig = z.output<typeof PreaurPkgbuildSandboxSchema>;
 export type PreaurChrootPacmanRepository = z.output<typeof PreaurChrootPacmanRepositorySchema>;
 export type PreaurChrootPacmanConfig = z.output<typeof PreaurChrootPacmanSchema>;
+export type PreaurToolchainConfig = z.output<typeof PreaurToolchainSchema>;
 export type PreaurChecker = z.output<typeof PreaurCheckerSchema>;
 export type PreaurGitHubChecker = z.output<typeof PreaurGitHubCheckerSchema>;
 export type PreaurDebChecker = z.output<typeof PreaurDebCheckerSchema>;

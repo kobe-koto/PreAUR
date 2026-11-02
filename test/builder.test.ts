@@ -19,6 +19,24 @@ describe('buildCommandPlan', () => {
         expect(plan.args).not.toContain('-M');
     });
 
+    test('mounts the toolchain drop-in into the chroot makepkg.conf.d', () => {
+        const plan = buildCommandPlan('extra-x86_64-build', {
+            chrootWorker: 'preaur-0',
+            toolchainDropIn: '/work/demo/makepkg-toolchain.conf',
+        });
+
+        expect(plan.args).toEqual([
+            '--', '-l', 'preaur-0',
+            '-D', '/work/demo/makepkg-toolchain.conf:/etc/makepkg.conf.d/zz-preaur-toolchain.conf',
+        ]);
+    });
+
+    test('rejects toolchain options for non-devtools builders', () => {
+        expect(() => buildCommandPlan('makepkg --syncdeps', {
+            toolchainDropIn: '/work/demo/makepkg-toolchain.conf',
+        })).toThrow(/devtools \*-build builder/);
+    });
+
     test('passes dependency packages directly to non-devtools builders', () => {
         const plan = buildCommandPlan('makepkg --syncdeps', {
             dummyPkgs: ['/tmp/demo-dep.pkg.tar.zst'],
