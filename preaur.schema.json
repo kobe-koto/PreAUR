@@ -329,7 +329,7 @@
                 },
                 "removeOrphans": {
                     "default": false,
-                    "description": "When a package recorded in data/versions.json is no longer in packages, run repo-remove for <pkgname> and <pkgname>-debug and delete their package files and signatures before dropping the versions.json entry. Entries already dropped while this was off are not cleaned up. Packages never recorded in versions.json, such as ones added to the repository by hand, are never removed.",
+                    "description": "When a package recorded in data/versions.json is no longer in packages, run repo-remove for every database entry built from its pkgbase (split and -debug packages included; <pkgname> and <pkgname>-debug when no entry matches) and delete their package files and signatures before dropping the versions.json entry. Entries already dropped while this was off are not cleaned up. Packages never recorded in versions.json, such as ones added to the repository by hand, are never removed.",
                     "type": "boolean"
                 }
             },

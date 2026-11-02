@@ -307,10 +307,11 @@ With `removeOld`, when a newly built package replaces a different version of the
 
 When a package is no longer listed in `packages`, PreAUR always drops its entry from `data/versions.json` and commits that as `versions: remove <pkgname>`. `data/known_packages` and `data/known_maintainers` are kept, so adding the package back keeps its approval and does not rebuild it if its package file still exists.
 
-With `repo.removeOrphans`, PreAUR also cleans the repository before dropping the entry: it runs `repo-remove` for `<pkgname>` and `<pkgname>-debug` (only the names actually in the database), then deletes their package files and `.sig` files. If `repo-remove` fails, the entry is kept and the cleanup is retried on the next run. Things to know:
+With `repo.removeOrphans`, PreAUR also cleans the repository before dropping the entry. Every database entry whose `%BASE%` is the package's pkgbase is removed with `repo-remove`, which covers split packages and the `-debug` package, and their package files and `.sig` files are deleted. If `repo-remove` fails, the entry is kept and the cleanup is retried on the next run. Things to know:
 
-- Only packages recorded in `data/versions.json` are removed. Packages you put into the repository by hand are never touched.
-- Split packages other than `<pkgname>` and `<pkgname>-debug` are not removed yet.
+- PreAUR records the pkgbase (`pkgbase`, or the first `pkgname`) in `data/versions.json` when it parses a PKGBUILD. For entries without one, it tries the AUR package name and then the configured `pkgname` as the base; if no database entry matches, it falls back to removing `<pkgname>` and `<pkgname>-debug`.
+- Only packages recorded in `data/versions.json` are removed, and nothing whose name or pkgbase belongs to a package still in the config. Packages you put into the repository by hand are never touched.
+- Old split package files that are no longer in the database are only deleted if they share a name with a removed entry or a fallback name.
 - Entries dropped while `removeOrphans` was off are gone, so enabling it later does not clean those packages; remove them once by hand with `repo-remove` and `rm`.
 - Cleanup runs only when there is something to process; a run with no packages, or with `-p` naming a package not in the config, exits before it.
 

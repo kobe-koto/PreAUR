@@ -5,13 +5,17 @@ import * as path from 'node:path';
 
 import {
     hasBuiltPackage,
-    orphanRepoPackageNames,
-    readRepoDbPackageNames,
-    removeRepoPackages,
+    orphanBaseCandidates,
+    orphanFallbackNames,
+    readRepoDbEntries,
+    removeOrphanRepoPackages,
     repoAddArgs,
     repoRemoveArgs,
     resolveBuiltPackage,
+    selectOrphanRepoPackages,
     withRepoLock,
+    type RepoCleanupProtection,
+    type RepoDbEntry,
 } from '../src/repo';
 import { gzipSync } from 'node:zlib';
 
@@ -157,10 +161,17 @@ function tarEntry(name: string, content: string | undefined): Buffer {
     return Buffer.concat([header, data, padding]);
 }
 
-async function writeRepoDb(dbFile: string, packages: Array<{ name: string; version: string }>): Promise<void> {
-    const entries = packages.flatMap(({ name, version }) => [
+type DbPackage = { name: string; version: string; base?: string };
+
+async function writeRepoDb(dbFile: string, packages: DbPackage[]): Promise<void> {
+    const entries = packages.flatMap(({ name, version, base }) => [
         tarEntry(`${name}-${version}/`, undefined),
-        tarEntry(`${name}-${version}/desc`, `%FILENAME%\n${name}-${version}-x86_64.pkg.tar.zst\n\n%NAME%\n${name}\n\n%VERSION%\n${version}\n`),
+        tarEntry(
+            `${name}-${version}/desc`,
+            `%FILENAME%\n${name}-${version}-x86_64.pkg.tar.zst\n\n%NAME%\n${name}\n\n`
+                + (base ? `%BASE%\n${base}\n\n` : '')
+                + `%VERSION%\n${version}\n`
+        ),
     ]);
     await fs.writeFile(dbFile, gzipSync(Buffer.concat([...entries, Buffer.alloc(1024, 0)])));
 }
@@ -186,13 +197,94 @@ async function makeRepoDir(baseDir: string, files: string[]): Promise<string> {
     return repoDir;
 }
 
-describe('orphanRepoPackageNames', () => {
-    test('targets each pkgname and its -debug package', () => {
-        expect(orphanRepoPackageNames(['foo', 'bar'])).toEqual(['foo', 'foo-debug', 'bar', 'bar-debug']);
+const noProtection = (): RepoCleanupProtection => ({ names: new Set(), bases: new Set() });
+
+describe('orphan target names', () => {
+    test('orders base candidates by recorded pkgbase, AUR name, then key', () => {
+        expect(orphanBaseCandidates({ key: 'foo', pkgbase: 'foo-base', aurPkgname: 'foo-aur' }))
+            .toEqual(['foo-base', 'foo-aur', 'foo']);
+        expect(orphanBaseCandidates({ key: 'foo', pkgbase: 'foo' })).toEqual(['foo']);
     });
 
-    test('never targets a package that is still configured', () => {
-        expect(orphanRepoPackageNames(['foo'], ['foo-debug', 'baz'])).toEqual(['foo']);
+    test('falls back to key and pkgbase with their -debug packages', () => {
+        expect(orphanFallbackNames({ key: 'foo' })).toEqual(['foo', 'foo-debug']);
+        expect(orphanFallbackNames({ key: 'foo', pkgbase: 'foo-base' }))
+            .toEqual(['foo', 'foo-debug', 'foo-base', 'foo-base-debug']);
+    });
+});
+
+describe('selectOrphanRepoPackages', () => {
+    const entry = (name: string, base?: string): RepoDbEntry => ({
+        name,
+        base,
+        filename: `${name}-1.0-1-x86_64.pkg.tar.zst`,
+    });
+
+    test('selects split and -debug packages sharing the recorded pkgbase', () => {
+        const entries = [
+            entry('foo-cli', 'foo-base'),
+            entry('foo-docs', 'foo-base'),
+            entry('foo-base-debug', 'foo-base'),
+            entry('foo', 'other'),
+            entry('bar', 'bar'),
+        ];
+
+        const selection = selectOrphanRepoPackages(entries, [{ key: 'foo', pkgbase: 'foo-base' }], noProtection());
+
+        expect(selection.dbNames).toEqual(['foo-cli', 'foo-docs', 'foo-base-debug']);
+        expect(selection.artifactNames).toEqual(['foo-cli', 'foo-docs', 'foo-base-debug']);
+        expect(selection.filenames).toEqual([
+            'foo-cli-1.0-1-x86_64.pkg.tar.zst',
+            'foo-docs-1.0-1-x86_64.pkg.tar.zst',
+            'foo-base-debug-1.0-1-x86_64.pkg.tar.zst',
+        ]);
+    });
+
+    test('uses the key as base for entries recorded before pkgbase existed', () => {
+        const entries = [entry('foo', 'foo'), entry('foo-extras', 'foo'), entry('foo-debug', 'foo')];
+        expect(selectOrphanRepoPackages(entries, [{ key: 'foo' }], noProtection()).dbNames)
+            .toEqual(['foo', 'foo-extras', 'foo-debug']);
+    });
+
+    test('falls back to names when no database entry has a matching base', () => {
+        const entries = [entry('foo'), entry('foo-debug'), entry('foo-tools')];
+        const selection = selectOrphanRepoPackages(entries, [{ key: 'foo' }], noProtection());
+
+        expect(selection.dbNames).toEqual(['foo', 'foo-debug']);
+        expect(selection.artifactNames).toEqual(['foo', 'foo-debug']);
+    });
+
+    test('only targets names that exist in the database for repo-remove', () => {
+        const selection = selectOrphanRepoPackages([entry('foo', 'other')], [{ key: 'foo' }], noProtection());
+        expect(selection.dbNames).toEqual(['foo']);
+        expect(selection.artifactNames).toEqual(['foo', 'foo-debug']);
+    });
+
+    test('still deletes fallback artifacts when the database is empty', () => {
+        const selection = selectOrphanRepoPackages([], [{ key: 'foo', pkgbase: 'foo-base' }], noProtection());
+        expect(selection.dbNames).toEqual([]);
+        expect(selection.artifactNames).toEqual(['foo', 'foo-debug', 'foo-base', 'foo-base-debug']);
+    });
+
+    test('never selects packages belonging to configured names or bases', () => {
+        const entries = [
+            entry('foo-cli', 'shared'),
+            entry('foo-docs', 'shared'),
+            entry('foo', 'foo'),
+            entry('foo-debug', 'foo'),
+        ];
+        const protection: RepoCleanupProtection = { names: new Set(['foo-debug']), bases: new Set(['shared']) };
+
+        const selection = selectOrphanRepoPackages(entries, [{ key: 'foo', pkgbase: 'shared' }], protection);
+
+        expect(selection.dbNames).toEqual(['foo']);
+        expect(selection.artifactNames).toEqual(['foo']);
+    });
+
+    test('ignores entries that only appear in the repository by hand', () => {
+        const selection = selectOrphanRepoPackages([entry('manual', 'manual')], [{ key: 'foo' }], noProtection());
+        expect(selection.dbNames).toEqual([]);
+        expect(selection.filenames).toEqual([]);
     });
 });
 
@@ -203,40 +295,71 @@ describe('repoRemoveArgs', () => {
     });
 });
 
-describe('readRepoDbPackageNames', () => {
-    test('reads %NAME% from every desc entry', async () => {
+describe('readRepoDbEntries', () => {
+    test('reads %NAME%, %BASE% and %FILENAME% from every desc entry', async () => {
         const baseDir = await makeBaseDir();
         const dbFile = path.join(baseDir, 'localrepo.db.tar.gz');
         await writeRepoDb(dbFile, [
-            { name: 'foo', version: '1:2.0-1' },
-            { name: 'foo-debug', version: '1:2.0-1' },
-            { name: 'foo-tools', version: '3.1-2' },
+            { name: 'foo', version: '1:2.0-1', base: 'foo' },
+            { name: 'foo-debug', version: '1:2.0-1', base: 'foo' },
+            { name: 'legacy', version: '3.1-2' },
         ]);
 
-        expect([...await readRepoDbPackageNames(dbFile)].sort()).toEqual(['foo', 'foo-debug', 'foo-tools']);
+        expect(await readRepoDbEntries(dbFile)).toEqual([
+            { name: 'foo', base: 'foo', filename: 'foo-1:2.0-1-x86_64.pkg.tar.zst' },
+            { name: 'foo-debug', base: 'foo', filename: 'foo-debug-1:2.0-1-x86_64.pkg.tar.zst' },
+            { name: 'legacy', base: undefined, filename: 'legacy-3.1-2-x86_64.pkg.tar.zst' },
+        ]);
     });
 });
 
-describe('removeRepoPackages', () => {
+describe('removeOrphanRepoPackages', () => {
     const files = [
-        'foo-1.0-1-x86_64.pkg.tar.zst',
-        'foo-1.0-1-x86_64.pkg.tar.zst.sig',
-        'foo-debug-1.0-1-x86_64.pkg.tar.zst',
-        'foo-0.9-1-x86_64.pkg.tar.zst.sig',
+        'foo-cli-1.0-1-x86_64.pkg.tar.zst',
+        'foo-cli-1.0-1-x86_64.pkg.tar.zst.sig',
+        'foo-cli-0.9-1-x86_64.pkg.tar.zst.sig',
+        'foo-docs-1.0-1-x86_64.pkg.tar.zst',
+        'foo-base-debug-1.0-1-x86_64.pkg.tar.zst',
         'foo-tools-1.0-1-x86_64.pkg.tar.zst',
         'manual-1.0-1-any.pkg.tar.zst',
     ];
     const kept = ['foo-tools-1.0-1-x86_64.pkg.tar.zst', 'manual-1.0-1-any.pkg.tar.zst'];
+    const splitDb: DbPackage[] = [
+        { name: 'foo-cli', version: '1.0-1', base: 'foo-base' },
+        { name: 'foo-docs', version: '1.0-1', base: 'foo-base' },
+        { name: 'foo-base-debug', version: '1.0-1', base: 'foo-base' },
+        { name: 'foo-tools', version: '1.0-1', base: 'foo-tools' },
+    ];
 
-    test('skips repo-remove without a database and deletes exact artifact matches and signatures', async () => {
+    test('removes every package of the recorded pkgbase and their files', async () => {
         const baseDir = await makeBaseDir();
         const repoDir = await makeRepoDir(baseDir, files);
+        const dbFile = path.join(repoDir, 'localrepo.db.tar.gz');
+        await writeRepoDb(dbFile, splitDb);
+        const fake = await installFakeRepoRemove(baseDir, 0);
 
-        const result = await removeRepoPackages({ name: 'localrepo' }, ['foo', 'foo-debug'], baseDir);
+        try {
+            const result = await removeOrphanRepoPackages(
+                { name: 'localrepo' }, [{ key: 'foo', pkgbase: 'foo-base' }], noProtection(), baseDir
+            );
+            expect(result.removedFromDb).toEqual(['foo-cli', 'foo-docs', 'foo-base-debug']);
+        } finally {
+            fake.restore();
+        }
+
+        expect((await fs.readFile(fake.log, 'utf8')).trim().split('\n'))
+            .toEqual([dbFile, 'foo-cli', 'foo-docs', 'foo-base-debug']);
+        expect((await fs.readdir(repoDir)).sort()).toEqual(['localrepo.db.tar.gz', ...kept].sort());
+    });
+
+    test('skips repo-remove without a database and deletes fallback artifacts', async () => {
+        const baseDir = await makeBaseDir();
+        const repoDir = await makeRepoDir(baseDir, ['foo-1.0-1-x86_64.pkg.tar.zst', 'foo-1.0-1-x86_64.pkg.tar.zst.sig', 'foo-debug-1.0-1-x86_64.pkg.tar.zst', ...kept]);
+
+        const result = await removeOrphanRepoPackages({ name: 'localrepo' }, [{ key: 'foo' }], noProtection(), baseDir);
 
         expect(result.removedFromDb).toEqual([]);
         expect(result.deletedFiles.sort()).toEqual([
-            'foo-0.9-1-x86_64.pkg.tar.zst.sig',
             'foo-1.0-1-x86_64.pkg.tar.zst',
             'foo-1.0-1-x86_64.pkg.tar.zst.sig',
             'foo-debug-1.0-1-x86_64.pkg.tar.zst',
@@ -244,32 +367,14 @@ describe('removeRepoPackages', () => {
         expect((await fs.readdir(repoDir)).sort()).toEqual(kept);
     });
 
-    test('passes repo-remove only the names present in the database', async () => {
-        const baseDir = await makeBaseDir();
-        const repoDir = await makeRepoDir(baseDir, files);
-        const dbFile = path.join(repoDir, 'localrepo.db.tar.gz');
-        await writeRepoDb(dbFile, [{ name: 'foo', version: '1.0-1' }, { name: 'foo-tools', version: '1.0-1' }]);
-        const fake = await installFakeRepoRemove(baseDir, 0);
-
-        try {
-            const result = await removeRepoPackages({ name: 'localrepo' }, ['foo', 'foo-debug'], baseDir);
-            expect(result.removedFromDb).toEqual(['foo']);
-        } finally {
-            fake.restore();
-        }
-
-        expect((await fs.readFile(fake.log, 'utf8')).trim().split('\n')).toEqual([dbFile, 'foo']);
-        expect((await fs.readdir(repoDir)).sort()).toEqual(['localrepo.db.tar.gz', ...kept].sort());
-    });
-
-    test('does not run repo-remove when no name is in the database', async () => {
+    test('does not run repo-remove when nothing matches in the database', async () => {
         const baseDir = await makeBaseDir();
         const repoDir = await makeRepoDir(baseDir, []);
-        await writeRepoDb(path.join(repoDir, 'localrepo.db.tar.gz'), [{ name: 'bar', version: '1.0-1' }]);
+        await writeRepoDb(path.join(repoDir, 'localrepo.db.tar.gz'), [{ name: 'bar', version: '1.0-1', base: 'bar' }]);
         const fake = await installFakeRepoRemove(baseDir, 1);
 
         try {
-            await expect(removeRepoPackages({ name: 'localrepo' }, ['foo', 'foo-debug'], baseDir))
+            await expect(removeOrphanRepoPackages({ name: 'localrepo' }, [{ key: 'foo' }], noProtection(), baseDir))
                 .resolves.toEqual({ removedFromDb: [], deletedFiles: [] });
         } finally {
             fake.restore();
@@ -280,11 +385,13 @@ describe('removeRepoPackages', () => {
     test('keeps every file when repo-remove fails', async () => {
         const baseDir = await makeBaseDir();
         const repoDir = await makeRepoDir(baseDir, files);
-        await writeRepoDb(path.join(repoDir, 'localrepo.db.tar.gz'), [{ name: 'foo', version: '1.0-1' }]);
+        await writeRepoDb(path.join(repoDir, 'localrepo.db.tar.gz'), splitDb);
         const fake = await installFakeRepoRemove(baseDir, 1);
 
         try {
-            await expect(removeRepoPackages({ name: 'localrepo' }, ['foo', 'foo-debug'], baseDir)).rejects.toThrow();
+            await expect(removeOrphanRepoPackages(
+                { name: 'localrepo' }, [{ key: 'foo', pkgbase: 'foo-base' }], noProtection(), baseDir
+            )).rejects.toThrow();
         } finally {
             fake.restore();
         }
@@ -293,7 +400,7 @@ describe('removeRepoPackages', () => {
 
     test('does nothing when the repository directory does not exist', async () => {
         const baseDir = await makeBaseDir();
-        await expect(removeRepoPackages({ name: 'localrepo' }, ['foo'], baseDir))
+        await expect(removeOrphanRepoPackages({ name: 'localrepo' }, [{ key: 'foo' }], noProtection(), baseDir))
             .resolves.toEqual({ removedFromDb: [], deletedFiles: [] });
     });
 });

@@ -47,7 +47,7 @@ const PreaurResourcesSchema = z.object({
 const PreaurRepoSchema = z.object({
     name: z.string().describe('Local pacman repository name.'),
     removeOld: z.boolean().default(false).describe('Pass -R to repo-add so the previous package file and its signature are deleted when a different version of the same package name replaces it. Files already missing from the database, packages no longer produced, and leftover -debug packages are not removed.'),
-    removeOrphans: z.boolean().default(false).describe('When a package recorded in data/versions.json is no longer in packages, run repo-remove for <pkgname> and <pkgname>-debug and delete their package files and signatures before dropping the versions.json entry. Entries already dropped while this was off are not cleaned up. Packages never recorded in versions.json, such as ones added to the repository by hand, are never removed.'),
+    removeOrphans: z.boolean().default(false).describe('When a package recorded in data/versions.json is no longer in packages, run repo-remove for every database entry built from its pkgbase (split and -debug packages included; <pkgname> and <pkgname>-debug when no entry matches) and delete their package files and signatures before dropping the versions.json entry. Entries already dropped while this was off are not cleaned up. Packages never recorded in versions.json, such as ones added to the repository by hand, are never removed.'),
 }).strict().describe('Local pacman repository settings.');
 
 const PreaurProjectGitSyncSchema = z.object({

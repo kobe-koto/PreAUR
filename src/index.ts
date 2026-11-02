@@ -9,7 +9,7 @@ import { commitAndPush } from './git';
 import { buildPackage } from './builder';
 import { createDummyPackages } from './dummy';
 import { createPreBuildPackage, packagePreBuildConfig } from './prebuild';
-import { manageRepository, hasBuiltPackage, resolveBuiltPackage, orphanRepoPackageNames, removeRepoPackages } from './repo';
+import { manageRepository, hasBuiltPackage, resolveBuiltPackage, removeOrphanRepoPackages } from './repo';
 import { initMainLogger, createTaskLogger, getSessionLogDir, getTaskLogPath, loggerContext, constructMessager } from './logger';
 import { Semaphore } from './semaphore';
 import { ChrootPool } from './chroot_pool';
@@ -74,11 +74,18 @@ program
             let orphanVersions = findOrphanVersions(versionStore, configuredNames);
             if (orphanVersions.length > 0 && config.repo?.removeOrphans) {
                 const orphanNames = orphanVersions.map(([pkgname]) => pkgname);
+                // Protect every base a configured package might use, not just the most likely one.
+                const configuredBases = config.packages.flatMap(pkg => {
+                    const info = versionStore.get(pkg.pkgname);
+                    return [pkg.pkgname, pkg.aur_pkgname, info?.aur_pkgname, info?.pkgbase]
+                        .filter((base): base is string => !!base);
+                });
                 try {
                     // Clean the repository first; keep the entries on failure so the next run retries.
-                    await removeRepoPackages(
+                    await removeOrphanRepoPackages(
                         config.repo,
-                        orphanRepoPackageNames(orphanNames, configuredNames),
+                        orphanVersions.map(([key, info]) => ({ key, pkgbase: info.pkgbase, aurPkgname: info.aur_pkgname })),
+                        { names: new Set(configuredNames), bases: new Set(configuredBases) },
                         process.cwd()
                     );
                 } catch (e: any) {
