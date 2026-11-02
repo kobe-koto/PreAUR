@@ -104,6 +104,31 @@ packages:
         install -Dm644 /dev/null /etc/demo-prebuild-marker
 ```
 
+#### Build Chroot Storage and Parallel Builds
+
+With `resources.parallel` set to N, PreAUR gives each concurrent devtools build its own chroot copy (`<user>-preaur-worker-1` … `-N` next to `/var/lib/archbuild/<repo>-<arch>/root`). devtools `archbuild` always passes `-c` to `makechrootpkg`, so **every build resets its worker copy from the clean root**. How much I/O that costs depends on the filesystem under `/var/lib/archbuild`:
+
+| Filesystem | How `makechrootpkg` resets the copy | Cost per build |
+|---|---|---|
+| btrfs, with `root` a subvolume | `btrfs subvolume snapshot` | Near zero (copy-on-write, metadata only) |
+| anything else (ext4, xfs, …) | `rsync -a --delete` of the whole root | A full copy of the build root (hundreds of MB, tens of thousands of files) for every build in every worker |
+
+On hosts that build many packages or run several workers, put `/var/lib/archbuild` on btrfs. It does not have to be the root filesystem; a dedicated btrfs partition or a loop-mounted btrfs image works:
+
+```bash
+truncate -s 64G /var/lib/archbuild.img
+mkfs.btrfs /var/lib/archbuild.img
+mkdir -p /var/lib/archbuild
+mount -o loop,compress=zstd /var/lib/archbuild.img /var/lib/archbuild
+# add a matching /etc/fstab entry to mount it at boot
+```
+
+`mkarchroot` creates `root` as a subvolume only when the directory is already on btrfs at creation time. If you move an existing `/var/lib/archbuild` to btrfs, delete its `<repo>-<arch>` directories (for example `sudo rm -rf --one-file-system /var/lib/archbuild/extra-x86_64`) so the next build recreates the root and the worker copies as subvolumes. To check, `stat -c %i /var/lib/archbuild/extra-x86_64/root` should print `256`, and `stat -f -c %T /var/lib/archbuild` should print `btrfs`.
+
+Putting `/var/lib/archbuild` on tmpfs also avoids disk I/O, but every worker copy then takes RAM (roughly N × the root size plus build trees), and the copy itself still happens.
+
+The PKGBUILD metadata sandbox is not affected: it uses `--volatile=overlay` and never copies its root, whatever the filesystem.
+
 #### GitHub Provider Authentication
 If you heavily use the `github` checker type, fetching data can be throttled. 
 
