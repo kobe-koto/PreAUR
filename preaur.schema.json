@@ -140,7 +140,7 @@
                         },
                         "ephemeral": {
                             "default": true,
-                            "description": "Run metadata commands in a temporary chroot copy that is discarded after the command exits.",
+                            "description": "Run metadata commands on a read-only view of the root with a tmpfs overlay (systemd-nspawn --volatile=overlay); changes are discarded after the command exits.",
                             "type": "boolean"
                         },
                         "initRoot": {

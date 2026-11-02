@@ -71,7 +71,7 @@ Metadata commands run in a dedicated chroot root managed by PreAUR, separate fro
 - Once per PreAUR run, before the first metadata command, PreAUR updates the root with `pacman -Syu` and makes sure `base-devel`, `git`, `pacman-contrib`, and `pkgbuildSandbox.packages` are installed. It uses the host package cache and mirrorlist. If the update fails (for example, no network), PreAUR logs a warning and continues with the existing root.
 - VCS clients needed by dynamic `pkgver()` (such as `subversion` or `mercurial`) are installed into the root the first time they are needed and are kept for later runs.
 
-Metadata commands themselves never install packages. With `ephemeral: true` (the default), each command runs in a `systemd-nspawn --ephemeral` copy of the root that is discarded when the command exits.
+Metadata commands themselves never install packages. With `ephemeral: true` (the default), each command runs with `systemd-nspawn --volatile=overlay`: the root is mounted read-only with a tmpfs overlay on top, so nothing is copied and any changes are discarded when the command exits. This works on any filesystem. Commands take a shared `flock` on the root's lock file, and root updates take it exclusively, so the root never changes under a running command, including across concurrent PreAUR processes. With `ephemeral: false`, commands run directly on the root and are serialized.
 
 Because PreAUR installs tools into this root, it must not be a devtools build chroot; roots under `/var/lib/archbuild` are rejected. You can override it explicitly:
 

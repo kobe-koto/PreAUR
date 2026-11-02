@@ -77,7 +77,7 @@ Chroot sandbox used for PKGBUILD metadata commands before building.
 | `sudo` | no | boolean | true | Run the sandbox command through sudo when PreAUR is not root. |
 | `user` | no | string | "preaur" | User used inside the chroot for makepkg commands. It is created with the host UID when missing. |
 | `network` | no | boolean | true | Allow network access inside the PKGBUILD sandbox. |
-| `ephemeral` | no | boolean | true | Run metadata commands in a temporary chroot copy that is discarded after the command exits. |
+| `ephemeral` | no | boolean | true | Run metadata commands on a read-only view of the root with a tmpfs overlay (systemd-nspawn --volatile=overlay); changes are discarded after the command exits. |
 | `initRoot` | no | boolean | true | Create a missing metadata chroot root with devtools mkarchroot. |
 | `packages` | no | array<string> | [] | Extra packages installed once into the persistent metadata chroot root, in addition to base-devel, git, and pacman-contrib. |
 

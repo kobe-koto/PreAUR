@@ -10,6 +10,7 @@ import {
     detectVcsSourcePackages,
     metadataRootPackages,
     parseSandboxVersionOutput,
+    resolveMetadataRootLockFile,
     resolvePkgbuildSandboxOptions,
     type ResolvedPkgbuildSandboxOptions,
 } from '../src/pkgbuild_sandbox';
@@ -123,9 +124,12 @@ describe('buildPkgbuildSandboxCommand', () => {
             command: 'makepkg --printsrcinfo',
         });
 
-        expect(plan.cmd).toBe('systemd-nspawn');
+        expect(plan.cmd).toBe('flock');
+        expect(plan.args.slice(0, 3)).toEqual(['--shared', await resolveMetadataRootLockFile(root), 'systemd-nspawn']);
         expect(plan.args).toContain(`--directory=${root}`);
-        expect(plan.args).toContain('--ephemeral');
+        expect(plan.args).toContain('--volatile=overlay');
+        expect(plan.args).toContain('--register=no');
+        expect(plan.args).not.toContain('--ephemeral');
         expect(plan.args).toContain(`--bind=${pkgDir}:/mnt/preaur-pkg`);
         expect(plan.args).toContain(`--bind=${srcdest}:/mnt/preaur-srcdest`);
         expect(plan.args).toContain(`--bind=${pkgdest}:/mnt/preaur-pkgdest`);
@@ -246,6 +250,17 @@ describe('metadata root management', () => {
         expect(script).toContain('useradd');
     });
 
+    test('takes the root lock exclusively for maintenance', () => {
+        const plan = buildMetadataRootMaintenanceCommand(sandboxOptions({ sudo: true }), ['git'], {
+            refresh: false,
+            lockFile: '/var/lib/preaur/metadata/extra-x86_64.lock',
+        });
+
+        expect(plan.cmd).toBe('flock');
+        expect(plan.args.slice(0, 2)).toEqual(['--exclusive', '/var/lib/preaur/metadata/extra-x86_64.lock']);
+        expect(plan.args.slice(2, 4)).toEqual(['sudo', 'systemd-nspawn']);
+    });
+
     test('installs on-demand packages into the persistent root without a sync', () => {
         const plan = buildMetadataRootMaintenanceCommand(sandboxOptions(), ['subversion', 'subversion'], {
             refresh: false,
@@ -257,6 +272,37 @@ describe('metadata root management', () => {
         expect(script).not.toContain('-Sy');
         expect(script).not.toContain('useradd');
         expect(plan.args.some(arg => arg.startsWith('--bind'))).toBe(false);
+    });
+});
+
+describe('volatile sandbox locking', () => {
+    test('runs non-ephemeral commands directly on the root under an exclusive lock', async () => {
+        const baseDir = await makeDir('preaur-sandbox-');
+        const root = path.join(baseDir, 'chroot');
+        const pkgDir = path.join(baseDir, 'pkg');
+        await fs.mkdir(root, { recursive: true });
+        await fs.mkdir(pkgDir, { recursive: true });
+
+        const plan = await buildPkgbuildSandboxCommand({
+            pkgbuildPath: path.join(pkgDir, 'PKGBUILD'),
+            sandbox: sandboxOptions({ root, ephemeral: false }),
+            workDirs: {} as PackageWorkDirs,
+            command: 'makepkg --printsrcinfo',
+        });
+
+        expect(plan.args[0]).toBe('--exclusive');
+        expect(plan.args).not.toContain('--volatile=overlay');
+    });
+
+    test('prefers the lock file mkarchroot leaves next to the root', async () => {
+        const baseDir = await makeDir('preaur-sandbox-');
+        const root = path.join(baseDir, 'extra-x86_64');
+        const fallback = await resolveMetadataRootLockFile(root);
+        expect(path.dirname(fallback)).toBe(os.tmpdir());
+        expect(fallback).toBe(await resolveMetadataRootLockFile(root));
+
+        await fs.writeFile(`${root}.lock`, '', 'utf8');
+        expect(await resolveMetadataRootLockFile(root)).toBe(`${root}.lock`);
     });
 });
 

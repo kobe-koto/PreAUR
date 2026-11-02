@@ -113,7 +113,7 @@ Type: string. Required: no. Default: "preaur". User used inside the chroot for m
 Type: boolean. Required: no. Default: true. Allow network access inside the PKGBUILD sandbox.
 .TP
 .B ephemeral
-Type: boolean. Required: no. Default: true. Run metadata commands in a temporary chroot copy that is discarded after the command exits.
+Type: boolean. Required: no. Default: true. Run metadata commands on a read\-only view of the root with a tmpfs overlay (systemd\-nspawn \-\-volatile=overlay); changes are discarded after the command exits.
 .TP
 .B initRoot
 Type: boolean. Required: no. Default: true. Create a missing metadata chroot root with devtools mkarchroot.

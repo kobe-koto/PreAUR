@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -302,7 +303,7 @@ async function runSandboxCommand(options: SandboxRunOptions): Promise<string> {
     await prepareMetadataRoot(options.sandbox, options.packages ?? []);
     const plan = await buildPkgbuildSandboxCommand(options);
     const rootInfo = options.sandbox.ephemeral
-        ? `temporary copy of ${options.sandbox.root}`
+        ? `volatile overlay of ${options.sandbox.root}`
         : options.sandbox.root;
     console.log(PkgbuildSandboxMessager(`Executing in ${rootInfo}: ${options.command}`));
 
@@ -349,8 +350,13 @@ export async function buildPkgbuildSandboxCommand(options: SandboxRunOptions): P
     const envPairs = sandboxEnvPairs(env);
     const nspawnArgs = [
         '--quiet',
+        // Concurrent commands share one root; skip machined registration so
+        // they do not collide on the machine name derived from the directory.
+        '--register=no',
         `--directory=${options.sandbox.root}`,
-        ...(options.sandbox.ephemeral ? ['--ephemeral'] : []),
+        // Mount the root read-only with a tmpfs overlay on top instead of
+        // copying it (--ephemeral copies the whole tree on non-btrfs roots).
+        ...(options.sandbox.ephemeral ? ['--volatile=overlay'] : []),
         `--bind=${pkgDir}:${SANDBOX_PKG_DIR}`,
         `--chdir=${SANDBOX_PKG_DIR}`,
         `--setenv=HOME=${SANDBOX_HOME}`,
@@ -363,7 +369,37 @@ export async function buildPkgbuildSandboxCommand(options: SandboxRunOptions): P
         sandboxEntrypointCommand(options.sandbox.user, options.command, envPairs),
     ];
 
-    return sandboxCommandPlan(options.sandbox, nspawnArgs);
+    // Overlay lower directories must not change while mounted, so volatile
+    // commands share the root lock and anything writing to the root takes it
+    // exclusively.
+    return withRootLock(
+        sandboxCommandPlan(options.sandbox, nspawnArgs),
+        await resolveMetadataRootLockFile(options.sandbox.root),
+        options.sandbox.ephemeral ? 'shared' : 'exclusive',
+    );
+}
+
+function withRootLock(plan: PkgbuildSandboxCommandPlan, lockFile: string | undefined, mode: 'shared' | 'exclusive'): PkgbuildSandboxCommandPlan {
+    if (!lockFile) return plan;
+
+    return {
+        cmd: 'flock',
+        args: [mode === 'shared' ? '--shared' : '--exclusive', lockFile, plan.cmd, ...plan.args],
+        env: plan.env,
+    };
+}
+
+/**
+ * Lock file coordinating metadata commands with root maintenance across
+ * PreAUR processes. mkarchroot leaves a world-readable `<root>.lock` next to
+ * roots it creates; other roots fall back to a per-root file in the temp dir.
+ */
+export async function resolveMetadataRootLockFile(root: string): Promise<string> {
+    const devtoolsLock = `${root}.lock`;
+    if (await pathExists(devtoolsLock)) return devtoolsLock;
+
+    const digest = createHash('sha256').update(root).digest('hex').slice(0, 16);
+    return path.join(os.tmpdir(), `preaur-metadata-${digest}.lock`);
 }
 
 function sandboxCommandPlan(sandbox: ResolvedPkgbuildSandboxOptions, nspawnArgs: string[]): PkgbuildSandboxCommandPlan {
@@ -510,6 +546,7 @@ async function runMetadataRootMaintenance(sandbox: ResolvedPkgbuildSandboxOption
         refresh,
         cacheDir: await resolveHostPacmanCacheDir(),
         mirrorlist: await pathExists(HOST_MIRRORLIST) ? HOST_MIRRORLIST : undefined,
+        lockFile: await resolveMetadataRootLockFile(sandbox.root),
     });
     const action = refresh ? 'Updating' : `Installing ${packages.join(' ')} into`;
     console.log(PkgbuildSandboxMessager(`${action} metadata chroot ${sandbox.root}...`));
@@ -524,7 +561,7 @@ async function runMetadataRootMaintenance(sandbox: ResolvedPkgbuildSandboxOption
 export function buildMetadataRootMaintenanceCommand(
     sandbox: ResolvedPkgbuildSandboxOptions,
     packages: string[],
-    options: { refresh: boolean; cacheDir?: string; mirrorlist?: string },
+    options: { refresh: boolean; cacheDir?: string; mirrorlist?: string; lockFile?: string },
 ): PkgbuildSandboxCommandPlan {
     const quotedPackages = mergePackages(packages).map(shellQuote).join(' ');
     const pacmanSteps = options.refresh
@@ -536,6 +573,7 @@ export function buildMetadataRootMaintenanceCommand(
 
     const nspawnArgs = [
         '--quiet',
+        '--register=no',
         `--directory=${sandbox.root}`,
         ...(options.cacheDir ? [`--bind=${options.cacheDir}:${CHROOT_PACMAN_CACHE}`] : []),
         ...(options.mirrorlist ? [`--bind-ro=${options.mirrorlist}:${HOST_MIRRORLIST}`] : []),
@@ -548,7 +586,7 @@ export function buildMetadataRootMaintenanceCommand(
         ].join('\n'),
     ];
 
-    return sandboxCommandPlan(sandbox, nspawnArgs);
+    return withRootLock(sandboxCommandPlan(sandbox, nspawnArgs), options.lockFile, 'exclusive');
 }
 
 async function resolveHostPacmanCacheDir(): Promise<string | undefined> {

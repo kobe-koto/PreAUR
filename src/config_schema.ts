@@ -85,7 +85,7 @@ const PreaurPkgbuildSandboxSchema = z.object({
     sudo: z.boolean().default(true).describe('Run the sandbox command through sudo when PreAUR is not root.'),
     user: z.string().default('preaur').describe('User used inside the chroot for makepkg commands. It is created with the host UID when missing.'),
     network: z.boolean().default(true).describe('Allow network access inside the PKGBUILD sandbox.'),
-    ephemeral: z.boolean().default(true).describe('Run metadata commands in a temporary chroot copy that is discarded after the command exits.'),
+    ephemeral: z.boolean().default(true).describe('Run metadata commands on a read-only view of the root with a tmpfs overlay (systemd-nspawn --volatile=overlay); changes are discarded after the command exits.'),
     initRoot: z.boolean().default(true).describe('Create a missing metadata chroot root with devtools mkarchroot.'),
     packages: stringList('Extra packages installed once into the persistent metadata chroot root, in addition to base-devel, git, and pacman-contrib.').default([]),
 }).strict().prefault({}).describe('Chroot sandbox used for PKGBUILD metadata commands before building.');

@@ -19,8 +19,8 @@ config:
     sudo: true
     user: "preaur"
     network: true
-    # Use systemd-nspawn --ephemeral so metadata commands run in a temporary
-    # chroot copy that is discarded after each command exits.
+    # Use systemd-nspawn --volatile=overlay so metadata commands run on a
+    # read-only root with a tmpfs overlay that is discarded after each command.
     ephemeral: true
     # If the root does not exist, create it with devtools mkarchroot.
     initRoot: true
