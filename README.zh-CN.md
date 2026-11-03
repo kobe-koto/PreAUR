@@ -248,34 +248,46 @@ useradd -m -G preaur-build preaur
 
 **使用 Systemd Timer**
 
+以 system service 的方式运行 PreAUR，并设置 `User=preaur`。如果改用 user unit，还需要执行 `loginctl enable-linger preaur`：timer 只在该用户的 service manager 运行时才会触发，而专用账号平时不会登录。
+
+下面假设 PreAUR 的项目目录是 `~preaur/preaur`。
+
 1. 创建 service 文件：
-   `~/.config/systemd/user/preaur.service`
+   `/etc/systemd/system/preaur.service`
 
    ```ini
    [Unit]
    Description=PreAUR Automated Package Builder
-   
+   Wants=network-online.target
+   After=network-online.target
+
    [Service]
-   Type=simple
-   WorkingDirectory=%h/preaur
+   Type=oneshot
+   User=preaur
+   Group=preaur
+   # "~" 是 User= 指定用户的 home 目录。systemd 在这里只接受单独的 "~"，
+   # 所以用 env -C 进入其下的项目目录。
+   WorkingDirectory=~
    # 如果你是安装的 aur/preaur-{git,bin}, 它应该在这里
-   ExecStart=/usr/bin/preaur
+   ExecStart=/usr/bin/env -C preaur /usr/bin/preaur
    ```
 
+   不要添加 `NoNewPrivileges=yes`：PreAUR 需要通过 sudo 调用 devtools 和 systemd-nspawn。`PrivateTmp=`、`ProtectSystem=` 等沙箱选项也可能导致 chroot 构建失败。
+
 2. 创建 timer 文件：
-   `~/.config/systemd/user/preaur.timer`
+   `/etc/systemd/system/preaur.timer`
 
    ```ini
    [Unit]
    Description=Run PreAUR Daily
-   
+
    [Timer]
    # 每天凌晨 2 点
    OnCalendar=*-*-* 2:00:00
    # 每天下午 1 点
    OnCalendar=*-*-* 13:00:00
    Persistent=true
-   
+
    [Install]
    WantedBy=timers.target
    ```
@@ -283,9 +295,11 @@ useradd -m -G preaur-build preaur
 3. 启用 timer：
 
    ```bash
-   systemctl --user daemon-reload
-   systemctl --user enable --now preaur.timer
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now preaur.timer
    ```
+
+   可以用 `systemctl status preaur` 和 `journalctl -u preaur` 查看运行情况。
 
 ## 清理过时的软件包
 

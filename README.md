@@ -247,34 +247,46 @@ useradd -m -G preaur-build preaur
 
 **Using Systemd Timers**
 
+Run PreAUR as a system service with `User=preaur`. A user unit would also need `loginctl enable-linger preaur`, because the timer only fires while the user's service manager is running, and a dedicated account is normally never logged in.
+
+The steps below assume the PreAUR project directory is `~preaur/preaur`.
+
 1. Create a service file:
-   `~/.config/systemd/user/preaur.service`
+   `/etc/systemd/system/preaur.service`
 
    ```ini
    [Unit]
    Description=PreAUR Automated Package Builder
-   
+   Wants=network-online.target
+   After=network-online.target
+
    [Service]
-   Type=simple
-   WorkingDirectory=%h/preaur
+   Type=oneshot
+   User=preaur
+   Group=preaur
+   # "~" is the home directory of User=. systemd only accepts a bare "~" here,
+   # so env -C moves into the project directory below it.
+   WorkingDirectory=~
    # if you installed aur/preaur-{git,bin}, it should be here
-   ExecStart=/usr/bin/preaur
+   ExecStart=/usr/bin/env -C preaur /usr/bin/preaur
    ```
 
+   Do not add `NoNewPrivileges=yes`: PreAUR needs sudo for devtools and systemd-nspawn. Sandboxing options such as `PrivateTmp=` or `ProtectSystem=` can also break chroot builds.
+
 2. Create a timer file:
-   `~/.config/systemd/user/preaur.timer`
+   `/etc/systemd/system/preaur.timer`
 
    ```ini
    [Unit]
    Description=Run PreAUR Daily
-   
+
    [Timer]
    # daily, 2 a.m.
    OnCalendar=*-*-* 2:00:00
    # daily, 1 p.m.
    OnCalendar=*-*-* 13:00:00
    Persistent=true
-   
+
    [Install]
    WantedBy=timers.target
    ```
@@ -282,9 +294,11 @@ useradd -m -G preaur-build preaur
 3. Enable the timer:
 
    ```bash
-   systemctl --user daemon-reload
-   systemctl --user enable --now preaur.timer
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now preaur.timer
    ```
+
+   Check runs with `systemctl status preaur` and `journalctl -u preaur`.
 
 ## Cleaning Outdated Packages
 
