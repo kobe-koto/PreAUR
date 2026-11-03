@@ -110,6 +110,19 @@ webhooks:
         });
     });
 
+    test('reports the line and column of YAML syntax errors', async () => {
+        const configPath = await writeConfig('maintainers:\n  - id: johndoe\npackages: [\n');
+
+        await expect(loadConfig(configPath)).rejects.toThrow(/Failed to load config from .*\(\d+:\d+\)/);
+    });
+
+    test('reports schema errors for an empty config file', async () => {
+        const configPath = await writeConfig('\n');
+
+        await expect(loadConfig(configPath)).rejects.toThrow(/Failed to load config from/);
+        await expect(loadConfig(configPath)).rejects.not.toThrow(/input is empty/);
+    });
+
     test('rejects unknown config keys', async () => {
         const configPath = await writeConfig(`
 unknown: true

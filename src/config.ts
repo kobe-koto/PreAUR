@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { parse } from 'yaml';
+import { load } from 'js-yaml';
 import * as path from 'node:path';
 import { z } from 'zod';
 
@@ -59,7 +59,9 @@ export async function loadConfig(configPath: string): Promise<PreaurConfig> {
         const resolvedConfigPath = path.resolve(configPath);
         const configDir = path.dirname(resolvedConfigPath);
         const fileContents = await readFile(resolvedConfigPath, 'utf8');
-        const parsed = PreaurRawConfigSchema.parse(parse(fileContents));
+        // js-yaml rejects empty input; treat it as an empty document so the schema reports missing fields.
+        const document = fileContents.trim() === '' ? null : load(fileContents);
+        const parsed = PreaurRawConfigSchema.parse(document);
 
         return normalizeConfig(parsed, configDir);
     } catch (error: any) {
