@@ -336,4 +336,117 @@ describe('runPackageVersionCheck', () => {
 
         await expect(fs.access(path.join(baseDir, 'data', 'versions.json'))).rejects.toThrow();
     });
+
+    describe('version marker', () => {
+        const COMMIT = 'a'.repeat(40);
+        const STATIC_PKGBUILD = 'pkgname=demo\npkgver=1.0.0\npkgrel=1\npackage() {\n  true\n}\n';
+        const marker = (commit = COMMIT) => ({
+            commit,
+            git: 'https://aur.archlinux.org/demo.git',
+            parser: 'native',
+            builder: 'extra-x86_64-build',
+        });
+
+        async function setup(pkgbuild: string, commit: string | undefined = COMMIT) {
+            const baseDir = await makeBaseDir();
+            const pkgDir = path.join(baseDir, 'pkgbuilds', 'demo');
+            await fs.mkdir(pkgDir, { recursive: true });
+            await fs.writeFile(path.join(pkgDir, 'PKGBUILD'), pkgbuild, 'utf8');
+            const store = new VersionStore(baseDir);
+            await store.load();
+            const calls = { parse: 0, dynamic: 0 };
+            const deps: PackageVersionCheckDeps = {
+                ...makeDeps({ pkgver: '1.0.0', pkgrel: 1 }),
+                preparePackageDiff: async () => ({ path: pkgDir, git: {} as any }),
+                resolveHeadCommit: async () => commit,
+            };
+            const parse = deps.parsePkgBuild!;
+            deps.parsePkgBuild = async (...args) => { calls.parse++; return parse(...args); };
+            deps.updateDynamicPkgver = async () => { calls.dynamic++; return false; };
+            return { baseDir, store, deps, calls };
+        }
+
+        const packages: PreaurPackage[] = [{ pkgname: 'demo', maintainer: 'preaur-owner' }];
+
+        test('records the marker when a static version is confirmed unchanged', async () => {
+            const { baseDir, store, deps } = await setup(STATIC_PKGBUILD);
+            store.set('demo', { pkgver: '1.0.0', pkgrel: 1 });
+            deps.hasBuiltPackage = async () => true;
+
+            await runPackageVersionCheck(packages, store, { baseDir, repo: { name: 'localrepo' }, deps });
+
+            expect(store.get('demo')?.version_marker).toEqual(marker());
+        });
+
+        test('skips the PKGBUILD commands when the marker matches and the artifact exists', async () => {
+            const { baseDir, store, deps, calls } = await setup(STATIC_PKGBUILD);
+            store.set('demo', { pkgver: '1.0.0', pkgrel: 1, version_marker: marker() });
+            deps.hasBuiltPackage = async () => true;
+
+            const result = await runPackageVersionCheck(packages, store, { baseDir, repo: { name: 'localrepo' }, deps });
+
+            expect(calls).toEqual({ parse: 0, dynamic: 0 });
+            expect(result.skippedPackages.map(item => item.reason)).toEqual([
+                'version marker unchanged and artifact already exists (1.0.0-1, commit aaaaaaaaaaaa)',
+            ]);
+        });
+
+        test('runs the full check when the commit changed', async () => {
+            const { baseDir, store, deps, calls } = await setup(STATIC_PKGBUILD, 'b'.repeat(40));
+            store.set('demo', { pkgver: '1.0.0', pkgrel: 1, version_marker: marker() });
+            deps.hasBuiltPackage = async () => true;
+
+            await runPackageVersionCheck(packages, store, { baseDir, repo: { name: 'localrepo' }, deps });
+
+            expect(calls.parse).toBe(1);
+            expect(store.get('demo')?.version_marker).toEqual(marker('b'.repeat(40)));
+        });
+
+        test('runs the full check and keeps the marker for the build when the artifact is missing', async () => {
+            const { baseDir, store, deps, calls } = await setup(STATIC_PKGBUILD);
+            store.set('demo', { pkgver: '1.0.0', pkgrel: 1, version_marker: marker() });
+            deps.hasBuiltPackage = async () => false;
+
+            const result = await runPackageVersionCheck(packages, store, { baseDir, repo: { name: 'localrepo' }, deps });
+
+            expect(calls.parse).toBe(1);
+            expect(result.buildPlans.map(plan => plan.versionMarker)).toEqual([marker()]);
+        });
+
+        test('clears the marker when the PKGBUILD has pkgver()', async () => {
+            const { baseDir, store, deps } = await setup(`${STATIC_PKGBUILD}pkgver() {\n  echo 1.0.0\n}\n`, 'b'.repeat(40));
+            store.set('demo', { pkgver: '1.0.0', pkgrel: 1, version_marker: marker() });
+
+            await runPackageVersionCheck(packages, store, { baseDir, deps });
+
+            expect(store.get('demo')?.version_marker).toBeUndefined();
+        });
+
+        test('does not record a marker when sourcing reports pkgver()', async () => {
+            const { baseDir, store, deps } = await setup(STATIC_PKGBUILD);
+            store.set('demo', { pkgver: '1.0.0', pkgrel: 1 });
+            deps.parsePkgBuild = async () => ({ epoch: 0, pkgver: '1.0.0', pkgrel: 1, pkgverFunction: true });
+
+            const result = await runPackageVersionCheck(packages, store, { baseDir, deps });
+
+            expect(result.skippedPackages.map(item => item.reason)).toEqual(['version unchanged (1.0.0-1)']);
+            expect(store.get('demo')?.version_marker).toBeUndefined();
+            expect('pkgverFunction' in store.get('demo')!).toBe(false);
+        });
+
+        test('ignores the marker for packages with a checker', async () => {
+            const { baseDir, store, deps, calls } = await setup(STATIC_PKGBUILD);
+            store.set('demo', { pkgver: '1.0.0', pkgrel: 1, version_marker: marker() });
+            deps.fetchLatestVersion = async () => ({ version: '1.0.0' });
+
+            await runPackageVersionCheck(
+                [{ ...packages[0]!, checker: { type: 'github', repo: 'owner/demo' } }],
+                store,
+                { baseDir, deps }
+            );
+
+            expect(calls.parse).toBe(1);
+            expect(store.get('demo')?.version_marker).toBeUndefined();
+        });
+    });
 });

@@ -12,6 +12,8 @@ const execAsync = promisify(exec);
 export type PkgBuildData = PacmanVersion & {
     /** makepkg pkgbase: pkgbase if set, otherwise the first pkgname. Absent when it cannot be determined. */
     pkgbase?: string;
+    /** Whether sourcing the PKGBUILD defined pkgver(). Only set by parsers that source it; never stored. */
+    pkgverFunction?: boolean;
 };
 
 // Same default makepkg applies: pkgbase=${pkgbase:-${pkgname[0]}}. ${pkgname[0]} works for a string and an array.
@@ -65,6 +67,47 @@ export function parseLiteralPkgbase(content: string): string | 'dynamic' | undef
     if (word === undefined) return 'dynamic';
     if (/[$`\\]/.test(word)) return 'dynamic';
     return normalizePkgbase(word) ?? 'dynamic';
+}
+
+const FUNCTION_HEADER = /^\s*(?:function\s+[A-Za-z_][\w:.+-]*(?:\s*\(\s*\))?|[A-Za-z_][\w:.+-]*\s*\(\s*\))\s*(.*)$/;
+
+/**
+ * PKGBUILD lines outside function bodies. A multi-line body must end with `}`
+ * at column 0; returns undefined when a body's end cannot be found.
+ */
+function topLevelLines(content: string): string[] | undefined {
+    const lines: string[] = [];
+    let inBody = false;
+    for (const line of content.split(/\r?\n/)) {
+        if (inBody) {
+            if (/^\}\s*(?:#.*)?$/.test(line)) inBody = false;
+            continue;
+        }
+        const header = line.match(FUNCTION_HEADER);
+        if (header) {
+            const rest = header[1]!.trim();
+            // A one-line body such as `name() { ...; }` ends on the same line.
+            if (!(rest.startsWith('{') && rest.endsWith('}'))) inBody = true;
+            continue;
+        }
+        lines.push(line);
+    }
+    return inBody ? undefined : lines;
+}
+
+/**
+ * True when the version comes only from the PKGBUILD text: no pkgver(), and no
+ * top-level command substitution, eval, or sourced file. Errs towards false.
+ */
+export function isStaticVersionPkgbuild(content: string): boolean {
+    if (/\bpkgver\s*\(\s*\)|\bfunction\s+pkgver\b/.test(content)) return false;
+    const lines = topLevelLines(content);
+    if (!lines) return false;
+    return !lines.some(line => {
+        const code = line.trim();
+        if (code === '' || code.startsWith('#')) return false;
+        return /\$\((?!\()|`/.test(code) || /(?:^|[;&|]\s*)(?:source|\.|eval)\s/.test(code);
+    });
 }
 
 export type PkgBuildParser = 'native' | 'makepkg';

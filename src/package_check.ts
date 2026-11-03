@@ -1,3 +1,4 @@
+import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { SimpleGit } from 'simple-git';
 
@@ -5,9 +6,9 @@ import type { PreaurPackage, PreaurPkgbuildSandboxConfig, PreaurRepo } from './c
 import type { EnvPairs } from './env';
 import type { CheckerResult } from './checker';
 import { applyVersionTemplate, fetchLatestVersion } from './checker';
-import { preparePackageDiff, type GitCloneResult } from './git';
-import { parsePkgBuild, updateDynamicPkgver, updatePkgBuild, type PkgBuildData, type PkgBuildParser } from './pkgbuild';
-import { VersionStore } from './version_store';
+import { preparePackageDiff, resolveHeadCommit, resolvePackageGitUrl, type GitCloneResult } from './git';
+import { isStaticVersionPkgbuild, parsePkgBuild, updateDynamicPkgver, updatePkgBuild, withPkgbase, type PkgBuildData, type PkgBuildParser } from './pkgbuild';
+import { VersionStore, sameVersionMarker, type VersionMarker } from './version_store';
 import { hasBuiltPackage } from './repo';
 import { ensurePackageCheckWorkDirs, getPackageWorkDirs, packageWorkEnvPairs, type PackageWorkDirs } from './workdirs';
 import { formatPacmanVersion, hasPacmanVersion, pacmanVersionChanged } from './pacman_version';
@@ -28,6 +29,8 @@ export interface PackageBuildPlan {
     git: SimpleGit;
     builderType: string;
     finalData: PkgBuildData;
+    /** Version marker to store with finalData after a successful build; undefined clears it. */
+    versionMarker?: VersionMarker;
     pkgbuildModified: boolean;
     workDirs: PackageWorkDirs;
     env: EnvPairs;
@@ -45,6 +48,7 @@ export interface PackageVersionCheckDeps {
     updateDynamicPkgver?: typeof updateDynamicPkgver;
     updatePkgBuild?: typeof updatePkgBuild;
     hasBuiltPackage?: typeof hasBuiltPackage;
+    resolveHeadCommit?: typeof resolveHeadCommit;
 }
 
 const UpdateCheckerMessager = constructMessager('Update Checker');
@@ -156,6 +160,7 @@ async function processPackageVersionCheck(
     const prepare = deps.preparePackageDiff ?? preparePackageDiff;
     const fetchVersion = deps.fetchLatestVersion ?? fetchLatestVersion;
     const hasBuilt = deps.hasBuiltPackage ?? hasBuiltPackage;
+    const headCommit = deps.resolveHeadCommit ?? resolveHeadCommit;
 
     const pkgMessager = constructMessager('Update Checker', pkg.pkgname);
     const pkgbuildsBase = path.resolve(baseDir, 'pkgbuilds');
@@ -174,6 +179,35 @@ async function processPackageVersionCheck(
         pkgbuildsBase
     );
 
+    const builderType = pkg.builder || 'extra-x86_64-build';
+    const pkgbuildPath = path.resolve(pkgDir, 'PKGBUILD');
+    const localData = versionStore.get(pkg.pkgname);
+
+    // Read before any command can rewrite the PKGBUILD, so the marker describes this commit.
+    const commit = pkg.checker ? undefined : await headCommit(git);
+    const pristinePkgbuild = commit ? await fs.readFile(pkgbuildPath, 'utf8').catch(() => undefined) : undefined;
+    const candidateMarker: VersionMarker | undefined = commit
+        ? { commit, git: resolvePackageGitUrl(pkg.pkgname, pkg.git, !!pkg.push), parser: pkgbuildParser, builder: builderType }
+        : undefined;
+
+    // Same marker: the PKGBUILD is unchanged and its version is static, so skip the sandbox entirely.
+    const storedPkgbase = localData?.pkgbase;
+    if (candidateMarker && sameVersionMarker(localData?.version_marker, candidateMarker) && hasPacmanVersion(localData)) {
+        const storedData = withPkgbase(
+            { epoch: localData.epoch ?? 0, pkgver: localData.pkgver, pkgrel: localData.pkgrel },
+            storedPkgbase
+        );
+        const version = formatPacmanVersion(storedData);
+        if (!repo || await hasBuilt(repo, pkg.pkgname, storedData, baseDir)) {
+            const reason = repo
+                ? 'version marker unchanged and artifact already exists'
+                : 'version marker unchanged';
+            await webhook?.notify('PACKAGE_NO_UPDATE', { pkgname: pkg.pkgname, version, reason });
+            return { skipped: true, reason: `${reason} (${version}, commit ${commit!.slice(0, 12)})` };
+        }
+        console.log(pkgMessager(`Version marker unchanged but repo artifact missing for ${version}; running full check.`));
+    }
+
     let templateUpdates: Record<string, string> = {};
     if (pkg.checker) {
         const checkerRes = await fetchVersion(pkg.checker);
@@ -185,7 +219,6 @@ async function processPackageVersionCheck(
         }
     }
 
-    const builderType = pkg.builder || 'extra-x86_64-build';
     const sandbox = deps.parsePkgBuild || deps.updateDynamicPkgver || deps.updatePkgBuild
         ? undefined
         : resolvePkgbuildSandboxOptions({ config: pkgbuildSandbox, builder: builderType, workDirs });
@@ -209,18 +242,24 @@ async function processPackageVersionCheck(
             ) => updatePkgBuildInSandbox(pkgname, pkgbuildPath, updates, forceBumpRel, parser, env, sandbox, workDirs))
             : updatePkgBuild);
 
-    const pkgbuildPath = path.resolve(pkgDir, 'PKGBUILD');
-    await updateDynamic(pkgbuildPath, env);
+    const dynamicPkgverRan = await updateDynamic(pkgbuildPath, env);
 
     const pkgbuildModified = await updatePkg(pkg.pkgname, pkgbuildPath, templateUpdates, false, pkgbuildParser, env);
-    const finalData = await parse(pkgbuildPath, pkgbuildParser, env);
-    const localData = versionStore.get(pkg.pkgname);
+    const { pkgverFunction, ...finalData } = await parse(pkgbuildPath, pkgbuildParser, env);
+    if (pkgverFunction && !dynamicPkgverRan) {
+        console.warn(pkgMessager(pc.yellow('PKGBUILD defines pkgver() in a form PreAUR did not detect; the dynamic version was not updated.')));
+    }
+    // pkgverFunction comes from sourcing in the sandbox; the text check also covers parsers that do not source.
+    const versionMarker = candidateMarker && pristinePkgbuild !== undefined
+        && !dynamicPkgverRan && pkgverFunction !== true && isStaticVersionPkgbuild(pristinePkgbuild)
+        ? candidateMarker
+        : undefined;
     const versionChanged = pacmanVersionChanged(localData, finalData);
 
     if (!hasPacmanVersion(localData) && repo) {
         const alreadyBuilt = await hasBuilt(repo, pkg.pkgname, finalData, baseDir);
         if (alreadyBuilt) {
-            await saveVersionStoreUpdate(versionStore, pkg.pkgname, finalData, projectGit);
+            await saveVersionStoreUpdate(versionStore, pkg.pkgname, { ...finalData, version_marker: versionMarker }, projectGit);
             await webhook?.notify('PACKAGE_NO_UPDATE', {
                 pkgname: pkg.pkgname,
                 version: formatPacmanVersion(finalData),
@@ -239,9 +278,15 @@ async function processPackageVersionCheck(
         if (finalData.pkgbase && localData?.pkgbase !== finalData.pkgbase) {
             await saveVersionStoreUpdate(versionStore, pkg.pkgname, { pkgbase: finalData.pkgbase }, projectGit);
         }
+        // The version is confirmed current, so the marker may be recorded without a build.
+        const markerOutdated = !sameVersionMarker(localData?.version_marker, versionMarker);
+        const saveMarker = () => markerOutdated
+            ? saveVersionStoreUpdate(versionStore, pkg.pkgname, { version_marker: versionMarker }, projectGit)
+            : Promise.resolve();
         if (repo) {
             const alreadyBuilt = await hasBuilt(repo, pkg.pkgname, finalData, baseDir);
             if (alreadyBuilt) {
+                await saveMarker();
                 await webhook?.notify('PACKAGE_NO_UPDATE', {
                     pkgname: pkg.pkgname,
                     version: formatPacmanVersion(finalData),
@@ -255,6 +300,7 @@ async function processPackageVersionCheck(
                 missingRepoArtifact = true;
             }
         } else {
+            await saveMarker();
             await webhook?.notify('PACKAGE_NO_UPDATE', {
                 pkgname: pkg.pkgname,
                 version: formatPacmanVersion(finalData),
@@ -297,6 +343,7 @@ async function processPackageVersionCheck(
         git,
         builderType,
         finalData,
+        versionMarker,
         pkgbuildModified,
         workDirs,
         env,

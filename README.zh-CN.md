@@ -13,6 +13,7 @@
 - **干净的 chroot 构建**：交给 `devtools`（如 `extra-x86_64-build` 或 `pkgctl build`）安全地构建软件包，并根据 CPU 配置自动分配 `$MAKEFLAGS`。
 - **本地仓库**：自动收集构建出的 `.pkg.tar.zst`，并在 `./repo/` 中维护本地 pacman 数据库（`repo-add`）。
 - **智能缓存**：识别已经构建过的相同版本/pkgrel，避免重复编译。
+  对于没有 `checker`、且 PKGBUILD 版本为静态（没有 `pkgver()`，顶层也没有命令替换、`eval` 或 `source`）的包，PreAUR 会把包仓库的 git commit 记录到 `data/versions.json`（`version_marker`）。只要 commit、git 地址、解析器和 builder 都没变，后续运行会直接沿用已存版本，跳过 PKGBUILD 沙箱命令。
 
 ## 快速开始
 

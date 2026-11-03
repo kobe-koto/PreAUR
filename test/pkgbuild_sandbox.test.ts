@@ -404,6 +404,13 @@ describe('parseSandboxVersionOutput', () => {
         expect('pkgbase' in parseSandboxVersionOutput('\n1.2.3\n4\nNot Valid\n')).toBe(false);
     });
 
+    test('reads whether pkgver() is defined from the fifth output line', () => {
+        const output = (flag: string) => ['__PREAUR_VERSION_BEGIN__', '', '1.2.3', '4', 'demo', flag, '__PREAUR_VERSION_END__'].join('\n');
+        expect(parseSandboxVersionOutput(output('1'))).toEqual({ epoch: 0, pkgver: '1.2.3', pkgrel: 4, pkgbase: 'demo', pkgverFunction: true });
+        expect(parseSandboxVersionOutput(output('0')).pkgverFunction).toBe(false);
+        expect('pkgverFunction' in parseSandboxVersionOutput('\n1.2.3\n4\ndemo\n')).toBe(false);
+    });
+
     test('rejects invalid non-empty epoch output', () => {
         expect(() => parseSandboxVersionOutput('abc\n1.2.3\n4\n')).toThrow(/Could not parse epoch/);
     });

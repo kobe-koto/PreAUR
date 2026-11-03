@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { parseLiteralPkgbase, parsePkgBuild, parseSrcInfoPkgbase } from '../src/pkgbuild';
+import { isStaticVersionPkgbuild, parseLiteralPkgbase, parsePkgBuild, parseSrcInfoPkgbase } from '../src/pkgbuild';
 
 const tmpDirs: string[] = [];
 
@@ -150,5 +150,42 @@ describe('pkgbase', () => {
     test('parseSrcInfoPkgbase reads the pkgbase section', () => {
         expect(parseSrcInfoPkgbase('pkgbase = foo-base\n\tpkgver = 1.0\n\npkgname = foo\n')).toBe('foo-base');
         expect(parseSrcInfoPkgbase('\tpkgver = 1.0\n')).toBeUndefined();
+    });
+});
+
+describe('isStaticVersionPkgbuild', () => {
+    const base = [
+        'pkgname=demo',
+        '_ver=1.2.3',
+        'pkgver=${_ver//-/_}',
+        'pkgrel=$((1))',
+        'source=("https://example.org/demo-$pkgver.tar.gz")',
+        'build() {',
+        '  cd "demo-$(echo $pkgver)"',
+        '  make',
+        '}',
+        'package() { make DESTDIR="$pkgdir" install; }',
+    ].join('\n');
+
+    test('accepts literal versions and command substitution inside function bodies', () => {
+        expect(isStaticVersionPkgbuild(base)).toBe(true);
+    });
+
+    test('rejects any pkgver() definition', () => {
+        expect(isStaticVersionPkgbuild(`${base}\npkgver() {\n  git describe\n}`)).toBe(false);
+        expect(isStaticVersionPkgbuild(`${base}\npkgver ()\n{\n  git describe\n}`)).toBe(false);
+        expect(isStaticVersionPkgbuild(`${base}\nfunction pkgver {\n  git describe\n}`)).toBe(false);
+    });
+
+    test('rejects top-level command substitution, eval, and sourced files', () => {
+        expect(isStaticVersionPkgbuild(`_ver=$(date +%Y%m%d)\npkgver=$_ver\npkgrel=1`)).toBe(false);
+        expect(isStaticVersionPkgbuild('pkgver=`date +%s`\npkgrel=1')).toBe(false);
+        expect(isStaticVersionPkgbuild('source ../common.sh\npkgver=1\npkgrel=1')).toBe(false);
+        expect(isStaticVersionPkgbuild('. ./vars\npkgver=1\npkgrel=1')).toBe(false);
+        expect(isStaticVersionPkgbuild('eval "$x"\npkgver=1\npkgrel=1')).toBe(false);
+    });
+
+    test('rejects a function body whose closing brace is not at column 0', () => {
+        expect(isStaticVersionPkgbuild('pkgver=1\npkgrel=1\nbuild() {\n  make\n  }\n')).toBe(false);
     });
 });

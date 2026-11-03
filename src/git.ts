@@ -8,6 +8,22 @@ export interface GitCloneResult {
     git: SimpleGit;
 }
 
+export function resolvePackageGitUrl(pkgname: string, gitOverride: string | undefined, enablePush: boolean): string {
+    return gitOverride || (enablePush
+        ? `ssh://aur@aur.archlinux.org/${pkgname}.git`
+        : `https://aur.archlinux.org/${pkgname}.git`);
+}
+
+/** Commit hash of HEAD, or undefined when it cannot be read. */
+export async function resolveHeadCommit(git: SimpleGit): Promise<string | undefined> {
+    try {
+        const commit = (await git.revparse(['HEAD'])).trim();
+        return /^[0-9a-f]{40,64}$/.test(commit) ? commit : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 export async function preparePackageDiff(
     pkgname: string,
     gitOverride: string | undefined,
@@ -16,9 +32,7 @@ export async function preparePackageDiff(
 ): Promise<GitCloneResult> {
     const pkgMessager = constructMessager('Git', pkgname);
     const pkgDir = path.resolve(baseDir, pkgname);
-    const gitUrl = gitOverride || (enablePush
-        ? `ssh://aur@aur.archlinux.org/${pkgname}.git`
-        : `https://aur.archlinux.org/${pkgname}.git`);
+    const gitUrl = resolvePackageGitUrl(pkgname, gitOverride, enablePush);
 
     let exists = false;
     try {

@@ -13,6 +13,7 @@ It streamlines the process of fetching, updating, building, and publishing packa
 - **Clean Chroot Building**: Defers to `devtools` (e.g., `extra-x86_64-build` or `pkgctl build`) to build packages safely, intelligently allocating `$MAKEFLAGS` based on your CPU configuration.
 - **Local Repository**: Automatically collects built `.pkg.tar.zst` artifacts and maintains a local pacman database (`repo-add`) in `./repo/`.
 - **Smart Caching**: Recognizes if a package with the same version/pkgrel has already been built to avoid redundant compilation.
+  For a package without a `checker` whose PKGBUILD has a static version (no `pkgver()` and no top-level command substitution, `eval`, or `source`), PreAUR records the package git commit in `data/versions.json` (`version_marker`). While the commit, git URL, parser, and builder stay the same, later runs reuse the stored version and skip the PKGBUILD sandbox commands.
 
 ## Getting Started
 

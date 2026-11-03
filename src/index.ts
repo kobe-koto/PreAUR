@@ -5,7 +5,7 @@ import { Command } from 'commander';
 import * as path from 'node:path';
 
 import { loadConfig } from './config';
-import { commitAndPush } from './git';
+import { commitAndPush, resolveHeadCommit } from './git';
 import { buildPackage } from './builder';
 import { createDummyPackages } from './dummy';
 import { createPreBuildPackage, packagePreBuildConfig } from './prebuild';
@@ -179,6 +179,7 @@ program
 
             const processPackage = async (plan: PackageBuildPlan): Promise<void> => {
                 const { pkg, pkgDir, git, builderType, finalData, pkgbuildModified, workDirs, env } = plan;
+                let { versionMarker } = plan;
 
                 // Wait for dependencies first
                 if (pkg.repo_packages && pkg.repo_packages.length > 0) {
@@ -324,6 +325,11 @@ program
 
                                     try {
                                         await commitAndPush(git, pkg.pkgname, finalData.pkgver, true);
+                                        // The pushed commit is what the next run checks out.
+                                        if (versionMarker) {
+                                            const pushedCommit = await resolveHeadCommit(git);
+                                            versionMarker = pushedCommit ? { ...versionMarker, commit: pushedCommit } : undefined;
+                                        }
                                         await webhook?.notify('PUSH_SUCCESSFUL', {
                                             pkgname: pkg.pkgname,
                                             version: formatPacmanVersion(finalData),
@@ -344,7 +350,7 @@ program
                                 }
 
                                 // Sync successful build variables
-                                await saveVersionStoreUpdate(versionStore, pkg.pkgname, finalData, projectGit);
+                                await saveVersionStoreUpdate(versionStore, pkg.pkgname, { ...finalData, version_marker: versionMarker }, projectGit);
 
                             } catch (pkgError: any) {
                                 console.error(PreaurMessager(`Error processing ${pkg.pkgname}: ${pkgError.message}`));

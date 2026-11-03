@@ -2,6 +2,24 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { PartialPacmanVersion } from './pacman_version';
 
+/**
+ * Inputs that fully determine the version of a package without a checker
+ * whose PKGBUILD has no pkgver() and no top-level command substitution.
+ * While all fields match, the stored version is still current.
+ */
+export interface VersionMarker {
+    /** HEAD of the package git checkout. */
+    commit: string;
+    git: string;
+    parser: string;
+    builder: string;
+}
+
+export function sameVersionMarker(a: VersionMarker | undefined, b: VersionMarker | undefined): boolean {
+    if (!a || !b) return a === b;
+    return a.commit === b.commit && a.git === b.git && a.parser === b.parser && a.builder === b.builder;
+}
+
 export interface VersionInfo extends PartialPacmanVersion {
     source?: 'aur' | 'custom_git';
     aur_pkgname?: string;
@@ -9,6 +27,8 @@ export interface VersionInfo extends PartialPacmanVersion {
     co_maintainers?: string[];
     /** makepkg pkgbase of the last parsed PKGBUILD; may differ from the versions.json key. */
     pkgbase?: string;
+    /** Set after a successful build or a confirmed unchanged version when the version is static. */
+    version_marker?: VersionMarker;
 }
 
 export class VersionStore {

@@ -149,7 +149,8 @@ export async function parsePkgBuildInSandbox(
         return parseSrcInfoVersion(stdout);
     }
 
-    const script = `export CARCH="$(uname -m)"; source ./PKGBUILD >/dev/null 2>&1; printf '%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n' ${shellQuote(VERSION_OUTPUT_BEGIN)} "\${epoch-}" "\${pkgver-}" "\${pkgrel-}" ${PKGBASE_SHELL_EXPR} ${shellQuote(VERSION_OUTPUT_END)}`;
+    // The fifth line reports whether sourcing defined pkgver(), for the version marker.
+    const script = `export CARCH="$(uname -m)"; source ./PKGBUILD >/dev/null 2>&1; if declare -F pkgver >/dev/null; then _preaur_pkgver_fn=1; else _preaur_pkgver_fn=0; fi; printf '%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n' ${shellQuote(VERSION_OUTPUT_BEGIN)} "\${epoch-}" "\${pkgver-}" "\${pkgrel-}" ${PKGBASE_SHELL_EXPR} "$_preaur_pkgver_fn" ${shellQuote(VERSION_OUTPUT_END)}`;
     const stdout = await runSandboxCommand({
         pkgbuildPath,
         env,
@@ -248,7 +249,7 @@ function parseSrcInfoVersion(stdout: string): PkgBuildData {
 
 export function parseSandboxVersionOutput(stdout: string): PkgBuildData {
     const lines = extractVersionOutputLines(stdout);
-    const [epoch = '', pkgver = '', pkgrel = '', pkgbase = ''] = lines;
+    const [epoch = '', pkgver = '', pkgrel = '', pkgbase = '', pkgverFunction = ''] = lines;
     const parsedPkgrel = parseRequiredNonNegativeInt(pkgrel, 'pkgrel', 'sandbox PKGBUILD evaluation');
     const parsedEpoch = parseOptionalNonNegativeInt(epoch, 'epoch', 'sandbox PKGBUILD evaluation');
 
@@ -256,7 +257,10 @@ export function parseSandboxVersionOutput(stdout: string): PkgBuildData {
         throw new Error('Could not parse pkgver from sandbox PKGBUILD evaluation');
     }
 
-    return withPkgbase({ epoch: parsedEpoch, pkgver: pkgver.trim(), pkgrel: parsedPkgrel }, normalizePkgbase(pkgbase));
+    const data = withPkgbase({ epoch: parsedEpoch, pkgver: pkgver.trim(), pkgrel: parsedPkgrel }, normalizePkgbase(pkgbase));
+    const fn = pkgverFunction.trim();
+    // Older output has no fifth line; leave the field unset so nothing is inferred.
+    return fn === '1' || fn === '0' ? { ...data, pkgverFunction: fn === '1' } : data;
 }
 
 function extractVersionOutputLines(stdout: string): string[] {
