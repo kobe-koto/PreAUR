@@ -78,6 +78,38 @@ packages:
         });
     });
 
+    test('accepts webhook templates for a subset of tags', async () => {
+        const configPath = await writeConfig(`
+maintainers:
+  - id: johndoe
+    name: John Doe
+    email: john@example.com
+default_maintainer: johndoe
+packages:
+  - pkgname: demo
+webhooks:
+  - id: chat
+    url: https://example.org/hook
+    headers:
+      Authorization: Bearer test
+    payload:
+      text: "{{_rendered}}"
+      priority: 1
+    tags:
+      - BUILD_FAILED
+    templates:
+      BUILD_FAILED: "failed {{pkgname}}"
+`);
+
+        const config = await loadConfig(configPath);
+
+        expect(config.webhooks?.[0]).toMatchObject({
+            headers: { Authorization: 'Bearer test' },
+            payload: { text: '{{_rendered}}', priority: 1 },
+            templates: { BUILD_FAILED: 'failed {{pkgname}}' },
+        });
+    });
+
     test('rejects unknown config keys', async () => {
         const configPath = await writeConfig(`
 unknown: true

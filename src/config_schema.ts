@@ -25,10 +25,10 @@ const PreaurWebhookSchema = z.object({
     id: z.string().describe('Webhook identifier for logging.'),
     url: z.string().describe('Webhook endpoint URL. Supports {{variable}} templates.'),
     method: z.enum(['GET', 'POST']).optional().describe('HTTP method. Default: POST.'),
-    headers: z.record(z.string()).optional().describe('Custom HTTP headers.'),
-    payload: z.union([z.string(), z.record(z.any())]).optional().describe('Request payload. Default: {message: <rendered template>}. Supports {{variable}} templates.'),
+    headers: z.record(z.string(), z.string()).optional().describe('Custom HTTP headers.'),
+    payload: z.union([z.string(), z.record(z.string(), z.any())]).optional().describe('Request payload. Default: {message: <rendered template>}. Supports {{variable}} templates.'),
     tags: z.array(PreaurWebhookEventTagSchema).describe('Event tags this webhook subscribes to.'),
-    templates: z.record(PreaurWebhookEventTagSchema, z.string()).optional().describe('Custom message templates for each tag. Uses default templates if omitted.'),
+    templates: z.partialRecord(PreaurWebhookEventTagSchema, z.string()).optional().describe('Custom message templates for each tag. Uses default templates if omitted.'),
 }).strict().describe('A webhook notification endpoint.');
 const versionPart = z.union([z.string(), z.number()]);
 
