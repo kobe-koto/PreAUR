@@ -24,8 +24,9 @@ describe('applyVersionTemplate', () => {
 });
 
 import { afterEach, spyOn } from 'bun:test';
-import axios from 'axios';
-import { GitHubProvider, selectLatestCandidate, transformGitHubTag } from '../src/checker';
+import { http } from '../src/http';
+import { gzipSync } from 'node:zlib';
+import { DebProvider, GitHubProvider, selectLatestCandidate, transformGitHubTag } from '../src/checker';
 import type { PreaurGitHubChecker, PreaurDebChecker } from '../src/config';
 
 const gh = (extra: Partial<PreaurGitHubChecker> = {}): PreaurGitHubChecker => ({
@@ -93,38 +94,72 @@ describe('GitHubProvider filtering', () => {
     });
 
     test('uses releases/latest when no filters are configured', async () => {
-        getSpy = spyOn(axios, 'get').mockResolvedValue({ data: { tag_name: 'v3.1.0' } } as any);
+        getSpy = spyOn(http, 'getJson').mockResolvedValue({ tag_name: 'v3.1.0' });
         expect(await new GitHubProvider().check(gh())).toEqual({ version: '3.1.0' });
         expect(String(getSpy.mock.calls[0]?.[0])).toEndWith('/releases/latest');
     });
 
     test('walks releases and returns the newest matching stable release', async () => {
-        getSpy = spyOn(axios, 'get').mockResolvedValue({
-            data: [
-                { tag_name: 'cli-v9.0.0', prerelease: false },
-                { tag_name: 'app-v2.0.0', prerelease: true },
-                { tag_name: 'app-v1.5.0', prerelease: false, draft: true },
-                { tag_name: 'app-v1.4.0', prerelease: false },
-            ],
-        } as any);
+        getSpy = spyOn(http, 'getJson').mockResolvedValue([
+            { tag_name: 'cli-v9.0.0', prerelease: false },
+            { tag_name: 'app-v2.0.0', prerelease: true },
+            { tag_name: 'app-v1.5.0', prerelease: false, draft: true },
+            { tag_name: 'app-v1.4.0', prerelease: false },
+        ]);
 
         expect(await new GitHubProvider().check(gh({ prefix: 'app-v' }))).toEqual({ version: '1.4.0' });
         expect(String(getSpy.mock.calls[0]?.[0])).toEndWith('/releases');
     });
 
     test('includes prereleases when use is prerelease', async () => {
-        getSpy = spyOn(axios, 'get').mockResolvedValue({
-            data: [
-                { tag_name: 'cli-v9.0.0', prerelease: true },
-                { tag_name: 'app-v2.0.0', prerelease: true },
-            ],
-        } as any);
+        getSpy = spyOn(http, 'getJson').mockResolvedValue([
+            { tag_name: 'cli-v9.0.0', prerelease: true },
+            { tag_name: 'app-v2.0.0', prerelease: true },
+        ]);
 
         expect(await new GitHubProvider().check(gh({ prefix: 'app-v', use: 'prerelease' }))).toEqual({ version: '2.0.0' });
     });
 
     test('fails clearly when no release matches', async () => {
-        getSpy = spyOn(axios, 'get').mockResolvedValue({ data: [{ tag_name: 'cli-v1.0.0' }] } as any);
+        getSpy = spyOn(http, 'getJson').mockResolvedValue([{ tag_name: 'cli-v1.0.0' }]);
         await expect(new GitHubProvider().check(gh({ prefix: 'app-v' }))).rejects.toThrow(/No non-prerelease GitHub release matched prefix "app-v"/);
+    });
+});
+
+describe('DebProvider over HTTP', () => {
+    const packagesBody = 'Package: other\nVersion: 9.9\n\nPackage: demo\nVersion: 2:1.2-3\n';
+
+    async function checkWith(serve: (pathname: string) => Response) {
+        const server = Bun.serve({ port: 0, fetch: req => serve(new URL(req.url).pathname) });
+        try {
+            return await new DebProvider().check({
+                type: 'deb',
+                url: `http://localhost:${server.port}/debian/`,
+                pkg: 'demo',
+                dist: 'stable',
+                component: 'main',
+            });
+        } finally {
+            server.stop(true);
+        }
+    }
+
+    test('reads the plain Packages list', async () => {
+        const result = await checkWith(pathname => pathname.endsWith('/Packages')
+            ? new Response(packagesBody)
+            : new Response('', { status: 500 }));
+        expect(result).toEqual({ version: '1.2_3', epoch: '2' });
+    });
+
+    test('falls back to Packages.gz when Packages returns 404', async () => {
+        const result = await checkWith(pathname => pathname.endsWith('/Packages.gz')
+            ? new Response(gzipSync(packagesBody))
+            : new Response('missing', { status: 404 }));
+        expect(result).toEqual({ version: '1.2_3', epoch: '2' });
+    });
+
+    test('does not fall back on other HTTP errors', async () => {
+        await expect(checkWith(() => new Response('', { status: 503 })))
+            .rejects.toThrow(/Packages: Request failed with status code 503/);
     });
 });

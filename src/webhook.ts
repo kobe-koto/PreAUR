@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { http } from './http';
 import type { PreaurWebhookConfig, PreaurWebhookEventTag } from './config_schema';
 import { constructMessager } from './logger';
 
@@ -75,12 +75,12 @@ export class WebhookNotifier {
                 : this.renderTemplateObject(payload, contextWithRendered);
 
             if (method.toUpperCase() === 'GET') {
-                await axios.get(url, {
+                await http.get(url, {
                     params: typeof renderedPayload === 'object' ? renderedPayload : undefined,
                     timeout: 10000,
                 });
             } else {
-                await axios.post(url, renderedPayload, {
+                await http.post(url, renderedPayload, {
                     headers: {
                         'Content-Type': 'application/json',
                         ...(webhook.headers ?? {}),

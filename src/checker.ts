@@ -1,8 +1,8 @@
-import axios from 'axios';
 import * as zlib from 'node:zlib';
 import { promisify } from 'node:util';
 import type { PreaurChecker, PreaurDebChecker, PreaurGitHubChecker, PreaurRpmChecker } from './config';
 import { constructMessager } from './logger';
+import { HttpError, http } from './http';
 
 const gunzip = promisify(zlib.gunzip);
 const UpdateCheckerMessager = constructMessager('Update Checker');
@@ -170,8 +170,8 @@ export class GitHubProvider implements CheckerProvider<PreaurGitHubChecker> {
         try {
             // Without filters, keep relying on GitHub's own "latest release" designation.
             if (!includePrerelease && !hasFilters) {
-                const response = await axios.get(`https://api.github.com/repos/${repo}/releases/latest`, { headers });
-                const tag = response.data?.tag_name;
+                const latest = await http.getJson(`https://api.github.com/repos/${repo}/releases/latest`, { headers });
+                const tag = latest?.tag_name;
                 if (!tag) {
                     throw new Error('Could not determine tag_name from GitHub API response');
                 }
@@ -185,11 +185,11 @@ export class GitHubProvider implements CheckerProvider<PreaurGitHubChecker> {
 
             // Otherwise walk releases newest-first and take the first one that passes the filters.
             for (let page = 1; page <= GITHUB_RELEASES_MAX_PAGES; page++) {
-                const response = await axios.get(`https://api.github.com/repos/${repo}/releases`, {
+                const data = await http.getJson(`https://api.github.com/repos/${repo}/releases`, {
                     headers,
                     params: { per_page: GITHUB_RELEASES_PER_PAGE, page },
                 });
-                const releases = Array.isArray(response.data) ? response.data : [];
+                const releases = Array.isArray(data) ? data : [];
 
                 for (const release of releases) {
                     if (release?.draft) continue;
@@ -230,14 +230,12 @@ export class DebProvider implements CheckerProvider<PreaurDebChecker> {
         let data = '';
 
         try {
-            const response = await axios.get(packagesUrl, { responseType: 'text' });
-            data = response.data;
+            data = await http.getText(packagesUrl);
         } catch (e: any) {
-            if (e.response && e.response.status === 404) {
+            if (e instanceof HttpError && e.status === 404) {
                 // Try gzipped fallback
                 try {
-                    const gzResponse = await axios.get(`${packagesUrl}.gz`, { responseType: 'arraybuffer' });
-                    const unzipped = await gunzip(gzResponse.data);
+                    const unzipped = await gunzip(await http.getBuffer(`${packagesUrl}.gz`));
                     data = unzipped.toString('utf-8');
                 } catch (gzErr: any) {
                     throw new Error(`Failed to fetch Packages list from ${packagesUrl} or ${packagesUrl}.gz`);
@@ -299,8 +297,7 @@ export class RpmProvider implements CheckerProvider<PreaurRpmChecker> {
         let repomdXml = '';
 
         try {
-            const response = await axios.get(repomdUrl, { responseType: 'text' });
-            repomdXml = response.data;
+            repomdXml = await http.getText(repomdUrl);
         } catch (e: any) {
             throw new Error(`Failed to fetch repomd.xml from ${repomdUrl}: ${e.message}`);
         }
@@ -316,8 +313,7 @@ export class RpmProvider implements CheckerProvider<PreaurRpmChecker> {
         let primaryXml = '';
 
         try {
-            const dbResponse = await axios.get(primaryUrl, { responseType: 'arraybuffer' });
-            const unzipped = await gunzip(dbResponse.data);
+            const unzipped = await gunzip(await http.getBuffer(primaryUrl));
             primaryXml = unzipped.toString('utf-8');
         } catch (dbErr: any) {
             throw new Error(`Failed to fetch primary.xml.gz from ${primaryUrl}: ${dbErr.message}`);

@@ -1,10 +1,10 @@
-import axios from 'axios';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 import type { PreaurPackage } from './config';
 import { VersionStore, type VersionInfo } from './version_store';
 import { constructMessager } from './logger';
+import { http } from './http';
 import type { WebhookNotifier } from './webhook';
 
 const UNAPPROVED_PREFIX = '!!!';
@@ -262,8 +262,8 @@ export async function fetchAurPackageMetadata(pkgnames: string[]): Promise<Map<s
         const batch = uniqueNames.slice(i, i + batchSize);
         const query = batch.map(name => `arg[]=${encodeURIComponent(name)}`).join('&');
         const url = `https://aur.archlinux.org/rpc/v5/info?${query}`;
-        const response = await axios.get(url);
-        const results = Array.isArray(response.data?.results) ? response.data.results : [];
+        const data = await http.getJson(url);
+        const results = Array.isArray(data?.results) ? data.results : [];
 
         for (const item of results) {
             if (typeof item?.Name !== 'string') continue;
