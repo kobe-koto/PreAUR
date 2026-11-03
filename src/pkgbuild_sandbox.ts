@@ -354,9 +354,11 @@ export async function buildPkgbuildSandboxCommand(options: SandboxRunOptions): P
     const envPairs = sandboxEnvPairs(env);
     const nspawnArgs = [
         '--quiet',
-        // Concurrent commands share one root; skip machined registration so
-        // they do not collide on the machine name derived from the directory.
+        // Concurrent commands share one root; skip machined registration and
+        // use a unique machine name so they do not collide on the name derived
+        // from the directory.
         '--register=no',
+        `--machine=${uniqueMachineName()}`,
         `--directory=${options.sandbox.root}`,
         // Mount the root read-only with a tmpfs overlay on top instead of
         // copying it (--ephemeral copies the whole tree on non-btrfs roots).
@@ -381,6 +383,19 @@ export async function buildPkgbuildSandboxCommand(options: SandboxRunOptions): P
         await resolveMetadataRootLockFile(options.sandbox.root),
         options.sandbox.ephemeral ? 'shared' : 'exclusive',
     );
+}
+
+let machineNameCounter = 0;
+
+/**
+ * nspawn keeps per-machine runtime state under /run/systemd/nspawn/<machine>
+ * (such as unix-export) even with --register=no, and refuses to start when it
+ * already exists. A name unique per process and call avoids clashes between
+ * concurrent commands and with state left by a killed container.
+ */
+export function uniqueMachineName(): string {
+    machineNameCounter += 1;
+    return `preaur-meta-${process.pid}-${machineNameCounter}`;
 }
 
 function withRootLock(plan: PkgbuildSandboxCommandPlan, lockFile: string | undefined, mode: 'shared' | 'exclusive'): PkgbuildSandboxCommandPlan {
@@ -578,6 +593,7 @@ export function buildMetadataRootMaintenanceCommand(
     const nspawnArgs = [
         '--quiet',
         '--register=no',
+        `--machine=${uniqueMachineName()}`,
         `--directory=${sandbox.root}`,
         ...(options.cacheDir ? [`--bind=${options.cacheDir}:${CHROOT_PACMAN_CACHE}`] : []),
         ...(options.mirrorlist ? [`--bind-ro=${options.mirrorlist}:${HOST_MIRRORLIST}`] : []),

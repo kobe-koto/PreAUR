@@ -129,6 +129,9 @@ describe('buildPkgbuildSandboxCommand', () => {
         expect(plan.args).toContain(`--directory=${root}`);
         expect(plan.args).toContain('--volatile=overlay');
         expect(plan.args).toContain('--register=no');
+        const machineArgs = (args: string[]) => args.filter(arg => arg.startsWith('--machine='));
+        expect(machineArgs(plan.args)).toHaveLength(1);
+        expect(machineArgs(plan.args)[0]).toMatch(/^--machine=preaur-meta-\d+-\d+$/);
         expect(plan.args).not.toContain('--ephemeral');
         expect(plan.args).toContain(`--bind=${pkgDir}:/mnt/preaur-pkg`);
         expect(plan.args).toContain(`--bind=${srcdest}:/mnt/preaur-srcdest`);
