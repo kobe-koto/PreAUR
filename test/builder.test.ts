@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { buildCommandPlan, buildProcessEnvPairs } from '../src/builder.ts';
 import { envAssignments, envPairsToRecord } from '../src/env.ts';
+import { ChrootPool, chrootWorkerNames } from '../src/chroot_pool.ts';
 
 describe('buildCommandPlan', () => {
     test('passes devtools options to makechrootpkg without unsupported makepkg config flags', () => {
@@ -121,5 +122,26 @@ describe('buildProcessEnvPairs', () => {
         expect(envAssignments(pairs)).toContain('PKGDEST=/work/demo/pkgdest');
         expect(envAssignments(pairs)).toContain('PACKAGER=PreAUR <preaur@example.test>');
         expect(envAssignments(pairs)).not.toContain('PACKAGER=old value');
+    });
+});
+
+describe('chroot worker names', () => {
+    test('keep the previous names without an instance', () => {
+        expect(chrootWorkerNames(2, 'preaur')).toEqual(['preaur-preaur-worker-1', 'preaur-preaur-worker-2']);
+        expect(chrootWorkerNames(1, 'preaur', '')).toEqual(['preaur-preaur-worker-1']);
+    });
+
+    test('include the instance so processes of the same user use separate copies', () => {
+        expect(chrootWorkerNames(2, 'preaur', 'extra')).toEqual(['preaur-preaur-extra-worker-1', 'preaur-preaur-extra-worker-2']);
+    });
+
+    test('reduce the instance to characters safe in a path', () => {
+        expect(chrootWorkerNames(1, 'preaur', 'a/b c')).toEqual(['preaur-preaur-a_b_c-worker-1']);
+        expect(chrootWorkerNames(1, 'preaur', '..')).toEqual(['preaur-preaur-_-worker-1']);
+    });
+
+    test('ChrootPool hands out the instance names', async () => {
+        const pool = new ChrootPool(1, 'extra');
+        expect(await pool.acquire()).toMatch(/-preaur-extra-worker-1$/);
     });
 });

@@ -191,7 +191,7 @@ mold 和 LLD 都接受 GNU ld 的命令行，但都不是完全的替代品：mo
 
 #### 构建 chroot 的存储与并行构建
 
-当 `resources.parallel` 设为 N 时，PreAUR 会给每个并发的 devtools 构建分配独立的 chroot 副本（`<user>-preaur-worker-1` … `-N`，位于 `/var/lib/archbuild/<repo>-<arch>/root` 旁边）。devtools 的 `archbuild` 总是给 `makechrootpkg` 传 `-c`，所以**每次构建都会把 worker 副本从干净的 root 重置一遍**。这会产生多少 I/O，取决于 `/var/lib/archbuild` 所在的文件系统：
+当 `resources.parallel` 设为 N 时，PreAUR 会给每个并发的 devtools 构建分配独立的 chroot 副本（`<user>-preaur-worker-1` … `-N`，位于 `/var/lib/archbuild/<repo>-<arch>/root` 旁边；设置了 `PREAUR_INSTANCE` 时为 `<user>-preaur-<instance>-worker-N`，`preaur@.service` 会设置它，因此不同实例不会共用副本）。devtools 的 `archbuild` 总是给 `makechrootpkg` 传 `-c`，所以**每次构建都会把 worker 副本从干净的 root 重置一遍**。这会产生多少 I/O，取决于 `/var/lib/archbuild` 所在的文件系统：
 
 | 文件系统 | `makechrootpkg` 如何重置副本 | 每次构建的开销 |
 |---|---|---|

@@ -191,7 +191,7 @@ Limitations:
 
 #### Build Chroot Storage and Parallel Builds
 
-With `resources.parallel` set to N, PreAUR gives each concurrent devtools build its own chroot copy (`<user>-preaur-worker-1` … `-N` next to `/var/lib/archbuild/<repo>-<arch>/root`). devtools `archbuild` always passes `-c` to `makechrootpkg`, so **every build resets its worker copy from the clean root**. How much I/O that costs depends on the filesystem under `/var/lib/archbuild`:
+With `resources.parallel` set to N, PreAUR gives each concurrent devtools build its own chroot copy (`<user>-preaur-worker-1` … `-N` next to `/var/lib/archbuild/<repo>-<arch>/root`; `<user>-preaur-<instance>-worker-N` when `PREAUR_INSTANCE` is set, as `preaur@.service` does, so instances never share a copy). devtools `archbuild` always passes `-c` to `makechrootpkg`, so **every build resets its worker copy from the clean root**. How much I/O that costs depends on the filesystem under `/var/lib/archbuild`:
 
 | Filesystem | How `makechrootpkg` resets the copy | Cost per build |
 |---|---|---|
