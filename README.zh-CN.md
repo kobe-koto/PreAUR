@@ -366,3 +366,12 @@ bun run typecheck   # 类型检查 src/（仅 Node 类型）和 test/（Bun 类�
 bun run build       # 用 esbuild 打包到 dist/index.js
 bun run gen-schema  # 重新生成 preaur.schema.json、docs/config-reference.md 和 man 手册
 ```
+
+### Bun 与 Node API
+
+PreAUR 使用 Bun 开发和测试，但 `src/` 中的源码是纯 Node.js 代码。许多运行时都兼容 Node.js API，而它们各自的专有 API 彼此并不兼容，因此只使用 Node API 能让 PreAUR 保持可移植：
+
+- `src/` 只使用 Node.js API（`node:*` 模块，以及 `fetch` 等 Web 标准），不使用 `Bun.*`、`bun:*` 或 Bun 专有的 `import.meta` 字段。`tsconfig.json` 为 `src/` 只加载 Node 类型，用到 Bun 专有 API 时 `bun run typecheck` 会报错。
+- `src/` 只使用 Node 能通过类型擦除直接运行的 TypeScript 语法（`erasableSyntaxOnly`），相对导入都带 `.ts` 扩展名，因此无需构建即可 `node src/index.ts`。
+- 构建使用面向 Node 的 esbuild，`build.ts` 本身也能在 Node 上运行。
+- 源码之外的工具可以使用 Bun 专有 API：测试使用 `bun:test`，并通过 `test/tsconfig.json` 获得 Bun 类型。

@@ -366,3 +366,12 @@ bun run typecheck   # type-check src/ (Node types only) and test/ (Bun types)
 bun run build       # bundle to dist/index.js with esbuild
 bun run gen-schema  # regenerate preaur.schema.json, docs/config-reference.md and the man pages
 ```
+
+### Bun and Node APIs
+
+PreAUR is developed and tested with Bun, but the source in `src/` is plain Node.js code. Many runtimes implement the Node.js API, while their own APIs are not compatible with each other, so sticking to Node APIs keeps PreAUR portable:
+
+- `src/` uses only Node.js APIs (`node:*` modules and web standards such as `fetch`), never `Bun.*`, `bun:*` or Bun-only `import.meta` fields. `tsconfig.json` loads only Node types for `src/`, so `bun run typecheck` fails on Bun-specific APIs.
+- `src/` sticks to TypeScript that Node can run by stripping types (`erasableSyntaxOnly`), and relative imports include the `.ts` extension, so `node src/index.ts` works without a build step.
+- The build uses esbuild with a Node target, and `build.ts` runs on Node as well.
+- Bun-specific APIs are fine in tooling around the source: the tests use `bun:test` and get Bun types from `test/tsconfig.json`.
