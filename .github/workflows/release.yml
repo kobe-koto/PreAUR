@@ -51,7 +51,7 @@ jobs:
           install -Dm644 ./README.zh-CN.md "${artifact_dir}/README.zh-CN.md"
           install -Dm644 ./LICENSE "${artifact_dir}/LICENSE"
           install -Dm644 ./package.json "${artifact_dir}/package.json"
-          for file in preaur.sysusers preaur.tmpfiles preaur.service preaur.timer preaur.sudoers.example; do
+          for file in preaur.sysusers preaur.tmpfiles preaur@.service preaur@.timer preaur.sudoers.example; do
             install -Dm644 "./packaging/${file}" "${artifact_dir}/packaging/${file}"
           done
 

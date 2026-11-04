@@ -1,5 +1,7 @@
+# One instance per project directory below the preaur home:
+# preaur@extra.service runs PreAUR in ~preaur/extra.
 [Unit]
-Description=PreAUR Automated Package Builder
+Description=PreAUR Automated Package Builder (%i)
 Wants=network-online.target
 After=network-online.target
 
@@ -7,9 +9,11 @@ After=network-online.target
 Type=oneshot
 User=preaur
 Group=preaur
+# Keeps chroot worker copies of different instances apart.
+Environment=PREAUR_INSTANCE=%i
 # "~" is the home directory of User=. systemd only accepts a bare "~" here,
 # so env -C moves into the project directory below it.
 WorkingDirectory=~
-ExecStart=/usr/bin/env -C preaur /usr/bin/preaur
+ExecStart=/usr/bin/env -C %i /usr/bin/preaur
 # Do not add NoNewPrivileges=yes: PreAUR needs sudo for devtools and
 # systemd-nspawn. PrivateTmp= or ProtectSystem= can also break chroot builds.

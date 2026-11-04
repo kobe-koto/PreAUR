@@ -289,28 +289,41 @@ ssh aur@aur.archlinux.org help
 
 ### Set Up the Scheduler
 
-The AUR packages install `preaur.service` and `preaur.timer` to `/usr/lib/systemd/system/` without enabling them. Without the package, copy them from a source checkout:
+The units are templates with one instance per project directory below `/var/lib/preaur`: `preaur@extra.timer` starts `preaur@extra.service`, which runs PreAUR in `~preaur/extra`. The default instance is `preaur`, matching `~preaur/preaur`.
+
+The AUR packages install `preaur@.service` and `preaur@.timer` to `/usr/lib/systemd/system/` without enabling them. Without the package, copy them from a source checkout:
 
 ```bash
-sudo install -Dm644 packaging/preaur.service packaging/preaur.timer -t /etc/systemd/system/
+sudo install -Dm644 packaging/preaur@.service packaging/preaur@.timer -t /etc/systemd/system/
 ```
 
-The service runs PreAUR once as `preaur` in `~/preaur`:
+The service runs PreAUR once as `preaur` in the instance's project directory:
 
 ```ini
 [Service]
 Type=oneshot
 User=preaur
 Group=preaur
+# Keeps chroot worker copies of different instances apart.
+Environment=PREAUR_INSTANCE=%i
 # "~" is the home directory of User=. systemd only accepts a bare "~" here,
 # so env -C moves into the project directory below it.
 WorkingDirectory=~
-ExecStart=/usr/bin/env -C preaur /usr/bin/preaur
+ExecStart=/usr/bin/env -C %i /usr/bin/preaur
 ```
 
 Do not add `NoNewPrivileges=yes`: PreAUR needs sudo for devtools and systemd-nspawn. Sandboxing options such as `PrivateTmp=` or `ProtectSystem=` can also break chroot builds.
 
-The timer runs at 2:00 and 13:00. To change that, run `sudo systemctl edit preaur.timer` and clear the defaults before adding your own:
+Enable the timer (`preaur@.timer` enables the default instance, `preaur@preaur.timer`), and check runs with `systemctl status 'preaur@*'` and `journalctl -u 'preaur@*'`:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now preaur@.timer
+# another project in ~preaur/extra:
+sudo systemctl enable --now preaur@extra.timer
+```
+
+Each timer runs at 2:00 and 13:00. To change that for one instance, run `sudo systemctl edit preaur@preaur.timer` (or `sudo systemctl edit preaur@.timer` for all of them) and clear the defaults before adding your own:
 
 ```ini
 [Timer]
@@ -318,12 +331,7 @@ OnCalendar=
 OnCalendar=*-*-* 4:00:00
 ```
 
-Enable the timer, and check runs with `systemctl status preaur` and `journalctl -u preaur`:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now preaur.timer
-```
+Instances can run at the same time. Each has its own `repo/`, `data/` and `work/`, and its own devtools chroot copies (`<user>-preaur-<instance>-worker-N`). They share the metadata chroot under `/var/lib/preaur/metadata`, which is locked. If two projects use the same `repo.name`, make sure they do not publish to the same place.
 
 A system unit is used because the timer of a user unit only fires while that user's service manager runs, which for an account nobody logs into requires `loginctl enable-linger preaur`.
 
@@ -339,7 +347,7 @@ Earlier versions of this guide created `preaur` with `useradd -m`, so its home i
    pgrep -u preaur   # should print nothing
    ```
 
-   Remove `~preaur/.config/systemd/user/preaur.*`. If you wrote `/etc/systemd/system/preaur.{service,timer}` yourself, remove those as well, since they override the units shipped by the package.
+   Remove `~preaur/.config/systemd/user/preaur.*`. If you wrote `/etc/systemd/system/preaur.{service,timer}` yourself, disable and remove those as well, or they keep running next to `preaur@preaur.timer`.
 
 2. Optionally delete `~preaur/preaur/work/`; it is recreated on the next run. Back up its build logs first if `logdest` is not configured elsewhere.
 
@@ -361,11 +369,11 @@ Earlier versions of this guide created `preaur` with `useradd -m`, so its home i
 5. Run once by hand, then enable the timer:
 
    ```bash
-   sudo systemctl start preaur.service && journalctl -u preaur -e
-   sudo systemctl enable --now preaur.timer
+   sudo systemctl start preaur@preaur.service && journalctl -u preaur@preaur -e
+   sudo systemctl enable --now preaur@.timer
    ```
 
-6. After a few successful runs, delete `/home/preaur`. Until then, `sudo usermod -d /home/preaur preaur` rolls back.
+6. After a few successful runs, delete `/home/preaur`. Until then, `sudo usermod -d /home/preaur preaur` rolls back. The service names its chroot copies `preaur-preaur-preaur-worker-N`, so the old `preaur-preaur-worker-N` copies under `/var/lib/archbuild/<repo>-<arch>/` are no longer used and can be deleted (with `btrfs subvolume delete` if they are subvolumes).
 
 The user keeps its UID; changing it would require re-owning every file for no functional gain.
 

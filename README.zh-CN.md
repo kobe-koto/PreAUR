@@ -289,28 +289,41 @@ ssh aur@aur.archlinux.org help
 
 ### 配置定时任务
 
-AUR 包会把 `preaur.service` 和 `preaur.timer` 安装到 `/usr/lib/systemd/system/`，但不会启用。不使用 AUR 包时，从源码仓库复制：
+这些 unit 是模板，每个实例对应 `/var/lib/preaur` 下的一个项目目录：`preaur@extra.timer` 启动 `preaur@extra.service`，在 `~preaur/extra` 中运行 PreAUR。默认实例是 `preaur`，对应 `~preaur/preaur`。
+
+AUR 包会把 `preaur@.service` 和 `preaur@.timer` 安装到 `/usr/lib/systemd/system/`，但不会启用。不使用 AUR 包时，从源码仓库复制：
 
 ```bash
-sudo install -Dm644 packaging/preaur.service packaging/preaur.timer -t /etc/systemd/system/
+sudo install -Dm644 packaging/preaur@.service packaging/preaur@.timer -t /etc/systemd/system/
 ```
 
-该 service 以 `preaur` 身份在 `~/preaur` 中运行一次 PreAUR：
+该 service 以 `preaur` 身份在实例对应的项目目录中运行一次 PreAUR：
 
 ```ini
 [Service]
 Type=oneshot
 User=preaur
 Group=preaur
+# 让不同实例使用各自的 chroot worker 副本。
+Environment=PREAUR_INSTANCE=%i
 # "~" 是 User= 指定用户的 home 目录。systemd 在这里只接受单独的 "~"，
 # 所以用 env -C 进入其下的项目目录。
 WorkingDirectory=~
-ExecStart=/usr/bin/env -C preaur /usr/bin/preaur
+ExecStart=/usr/bin/env -C %i /usr/bin/preaur
 ```
 
 不要添加 `NoNewPrivileges=yes`：PreAUR 需要通过 sudo 调用 devtools 和 systemd-nspawn。`PrivateTmp=`、`ProtectSystem=` 等沙箱选项也可能导致 chroot 构建失败。
 
-timer 默认在 2:00 和 13:00 运行。要修改时间，执行 `sudo systemctl edit preaur.timer`，先清空默认值再写入自己的：
+启用 timer（`preaur@.timer` 会启用默认实例 `preaur@preaur.timer`），并用 `systemctl status 'preaur@*'` 和 `journalctl -u 'preaur@*'` 查看运行情况：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now preaur@.timer
+# 位于 ~preaur/extra 的另一个项目：
+sudo systemctl enable --now preaur@extra.timer
+```
+
+每个 timer 默认在 2:00 和 13:00 运行。要修改某个实例的时间，执行 `sudo systemctl edit preaur@preaur.timer`（或用 `sudo systemctl edit preaur@.timer` 修改全部实例），先清空默认值再写入自己的：
 
 ```ini
 [Timer]
@@ -318,12 +331,7 @@ OnCalendar=
 OnCalendar=*-*-* 4:00:00
 ```
 
-启用 timer，并用 `systemctl status preaur` 和 `journalctl -u preaur` 查看运行情况：
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now preaur.timer
-```
+多个实例可以同时运行。每个实例有自己的 `repo/`、`data/`、`work/` 和 devtools chroot 副本（`<user>-preaur-<instance>-worker-N`）；它们共用 `/var/lib/preaur/metadata` 下的 metadata chroot，该 chroot 有锁保护。如果两个项目使用相同的 `repo.name`，注意不要发布到同一个位置。
 
 这里使用 system unit，是因为 user unit 的 timer 只在该用户的 service manager 运行时才会触发；对于没人登录的账号，这需要执行 `loginctl enable-linger preaur`。
 
@@ -339,7 +347,7 @@ sudo systemctl enable --now preaur.timer
    pgrep -u preaur   # 应该没有输出
    ```
 
-   删除 `~preaur/.config/systemd/user/preaur.*`。如果你自己写过 `/etc/systemd/system/preaur.{service,timer}`，也一并删除，因为它们会覆盖 AUR 包附带的 unit。
+   删除 `~preaur/.config/systemd/user/preaur.*`。如果你自己写过 `/etc/systemd/system/preaur.{service,timer}`，也一并停用并删除，否则它们会和 `preaur@preaur.timer` 同时运行。
 
 2. 可选：删除 `~preaur/preaur/work/`，下次运行时会重新生成。如果没有另外配置 `logdest`，先备份其中的构建日志。
 
@@ -361,11 +369,11 @@ sudo systemctl enable --now preaur.timer
 5. 先手动运行一次，再启用 timer：
 
    ```bash
-   sudo systemctl start preaur.service && journalctl -u preaur -e
-   sudo systemctl enable --now preaur.timer
+   sudo systemctl start preaur@preaur.service && journalctl -u preaur@preaur -e
+   sudo systemctl enable --now preaur@.timer
    ```
 
-6. 确认运行正常几次后，删除 `/home/preaur`。在此之前，可以用 `sudo usermod -d /home/preaur preaur` 回滚。
+6. 确认运行正常几次后，删除 `/home/preaur`。在此之前，可以用 `sudo usermod -d /home/preaur preaur` 回滚。该 service 会把 chroot 副本命名为 `preaur-preaur-preaur-worker-N`，所以 `/var/lib/archbuild/<repo>-<arch>/` 下旧的 `preaur-preaur-worker-N` 副本不再使用，可以删除（如果是 btrfs 子卷，用 `btrfs subvolume delete`）。
 
 用户的 UID 保持不变；修改 UID 需要重新设置所有文件的属主，却没有实际收益。
 

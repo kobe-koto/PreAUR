@@ -1,0 +1,15 @@
+# preaur@<project>.timer starts preaur@<project>.service.
+# "systemctl enable preaur@.timer" enables the default instance, preaur@preaur.
+[Unit]
+Description=Run PreAUR twice a day (%i)
+
+[Timer]
+# Change the schedule with "systemctl edit preaur@<project>.timer"; start the
+# override with an empty "OnCalendar=" line to drop these defaults.
+OnCalendar=*-*-* 2:00:00
+OnCalendar=*-*-* 13:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+DefaultInstance=preaur
