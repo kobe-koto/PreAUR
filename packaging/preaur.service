@@ -1,0 +1,15 @@
+[Unit]
+Description=PreAUR Automated Package Builder
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=preaur
+Group=preaur
+# "~" is the home directory of User=. systemd only accepts a bare "~" here,
+# so env -C moves into the project directory below it.
+WorkingDirectory=~
+ExecStart=/usr/bin/env -C preaur /usr/bin/preaur
+# Do not add NoNewPrivileges=yes: PreAUR needs sudo for devtools and
+# systemd-nspawn. PrivateTmp= or ProtectSystem= can also break chroot builds.

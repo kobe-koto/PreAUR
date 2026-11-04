@@ -1,0 +1,6 @@
+# PreAUR build user. The password is invalid ("!*"), so it cannot log in with
+# one; "u!" is not used because it also expires the account, which makes sudo
+# refuse "sudo -iu preaur". The bash shell allows administrators to work as it.
+g preaur-build -
+u preaur - "PreAUR build user" /var/lib/preaur /usr/bin/bash
+m preaur preaur-build

@@ -1,0 +1,3 @@
+# Home directory of the preaur user; the project directory lives at
+# /var/lib/preaur/preaur and the default metadata chroot at /var/lib/preaur/metadata.
+d /var/lib/preaur 0750 preaur preaur -

@@ -1,0 +1,6 @@
+# Example sudo rules for PreAUR. These grant root-equivalent access to every
+# member of preaur-build, so they are not installed automatically.
+# Install with: sudo visudo -f /etc/sudoers.d/preaur
+Defaults:%preaur-build env_keep += "SOURCE_DATE_EPOCH SRCDEST SRCPKGDEST PKGDEST LOGDEST NPROC MAKEFLAGS PACKAGER GNUPGHOME BUILDTOOL"
+%preaur-build ALL=(ALL) NOPASSWD: /usr/bin/extra-x86_64-build, /usr/bin/multilib-build, /usr/bin/pkgctl
+%preaur-build ALL=(ALL) NOPASSWD: /usr/bin/systemd-nspawn, /usr/bin/mkarchroot

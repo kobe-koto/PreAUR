@@ -244,17 +244,24 @@ From a source checkout, use `bun run start` (for example `bun run start -p some-
 
 ## Deploying & Scheduled Runs
 
-PreAUR is designed with headless in mind.
+PreAUR is designed with headless in mind. It runs as a dedicated `preaur` system user whose home is `/var/lib/preaur`, with the project directory at `/var/lib/preaur/preaur`, started by a systemd timer.
 
-### Create group preaur-build
+The AUR packages (`preaur-git`, `preaur-bin`) create the user and ship the systemd units. Without them, the same files are in [`packaging/`](./packaging) of a source checkout.
+
+### Create the preaur User
+
+The AUR packages do this on install with `sysusers.d` and `tmpfiles.d`: they create the group `preaur-build`, the user `preaur` (member of `preaur-build`, home `/var/lib/preaur`, shell bash, no password) and its home directory. An existing `preaur` user is left unchanged; see [Migrating From /home/preaur](#migrating-from-homepreaur).
+
+Without the package, from a source checkout:
 
 ```bash
-groupadd preaur-build
+sudo systemd-sysusers packaging/preaur.sysusers
+sudo systemd-tmpfiles --create packaging/preaur.tmpfiles
 ```
 
 ### Configure Passwordless Sudo for group `preaur-build`
 
-Run `sudo visudo` and append your privileges:
+The rules are not installed automatically, because they give every member of `preaur-build` root-equivalent access. Run `sudo visudo -f /etc/sudoers.d/preaur` and add them (the AUR packages also ship this as `preaur.sudoers.example` under `/usr/share/doc/`):
 
 ```sudoers
 Defaults:%preaur-build env_keep += "SOURCE_DATE_EPOCH SRCDEST SRCPKGDEST PKGDEST LOGDEST NPROC MAKEFLAGS PACKAGER GNUPGHOME BUILDTOOL"
@@ -262,15 +269,13 @@ Defaults:%preaur-build env_keep += "SOURCE_DATE_EPOCH SRCDEST SRCPKGDEST PKGDEST
 %preaur-build ALL=(ALL) NOPASSWD: /usr/bin/systemd-nspawn, /usr/bin/mkarchroot
 ```
 
-### Create user for PreAUR
+### Set Up the Project Directory
+
+The remaining steps up to the scheduler run as the `preaur` user (`sudo -iu preaur`). Put the project at `~/preaur`, either by cloning your project repository or by creating the directory and writing `preaur.config.yaml` in it:
 
 ```bash
-useradd -m -G preaur-build preaur
-# let the user's systemd timers run without a login session
-loginctl enable-linger preaur
+git clone <your-project-repo> ~/preaur
 ```
-
-The remaining steps run as the `preaur` user (for example `sudo -iu preaur`), with the project directory at `~/preaur`.
 
 ### Set Up AUR Push (optional)
 
@@ -284,60 +289,85 @@ ssh aur@aur.archlinux.org help
 
 ### Set Up the Scheduler
 
-**Using Systemd Timers**
+The AUR packages install `preaur.service` and `preaur.timer` to `/usr/lib/systemd/system/` without enabling them. Without the package, copy them from a source checkout:
 
-Run PreAUR as a system service with `User=preaur`. A user unit would also need `loginctl enable-linger preaur`, because the timer only fires while the user's service manager is running, and a dedicated account is normally never logged in.
+```bash
+sudo install -Dm644 packaging/preaur.service packaging/preaur.timer -t /etc/systemd/system/
+```
 
-The steps below assume the PreAUR project directory is `~preaur/preaur`.
+The service runs PreAUR once as `preaur` in `~/preaur`:
 
-1. Create a service file:
-   `/etc/systemd/system/preaur.service`
+```ini
+[Service]
+Type=oneshot
+User=preaur
+Group=preaur
+# "~" is the home directory of User=. systemd only accepts a bare "~" here,
+# so env -C moves into the project directory below it.
+WorkingDirectory=~
+ExecStart=/usr/bin/env -C preaur /usr/bin/preaur
+```
 
-   ```ini
-   [Unit]
-   Description=PreAUR Automated Package Builder
-   Wants=network-online.target
-   After=network-online.target
+Do not add `NoNewPrivileges=yes`: PreAUR needs sudo for devtools and systemd-nspawn. Sandboxing options such as `PrivateTmp=` or `ProtectSystem=` can also break chroot builds.
 
-   [Service]
-   Type=oneshot
-   User=preaur
-   Group=preaur
-   # "~" is the home directory of User=. systemd only accepts a bare "~" here,
-   # so env -C moves into the project directory below it.
-   WorkingDirectory=~
-   # if you installed aur/preaur-{git,bin}, it should be here
-   ExecStart=/usr/bin/env -C preaur /usr/bin/preaur
-   ```
+The timer runs at 2:00 and 13:00. To change that, run `sudo systemctl edit preaur.timer` and clear the defaults before adding your own:
 
-   Do not add `NoNewPrivileges=yes`: PreAUR needs sudo for devtools and systemd-nspawn. Sandboxing options such as `PrivateTmp=` or `ProtectSystem=` can also break chroot builds.
+```ini
+[Timer]
+OnCalendar=
+OnCalendar=*-*-* 4:00:00
+```
 
-2. Create a timer file:
-   `/etc/systemd/system/preaur.timer`
+Enable the timer, and check runs with `systemctl status preaur` and `journalctl -u preaur`:
 
-   ```ini
-   [Unit]
-   Description=Run PreAUR twice a day
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now preaur.timer
+```
 
-   [Timer]
-   # daily, 2 a.m.
-   OnCalendar=*-*-* 2:00:00
-   # daily, 1 p.m.
-   OnCalendar=*-*-* 13:00:00
-   Persistent=true
+A system unit is used because the timer of a user unit only fires while that user's service manager runs, which for an account nobody logs into requires `loginctl enable-linger preaur`.
 
-   [Install]
-   WantedBy=timers.target
-   ```
+### Migrating From /home/preaur
 
-3. Enable the timer:
+Earlier versions of this guide created `preaur` with `useradd -m`, so its home is `/home/preaur`, and scheduled it with a user unit. That setup keeps working after installing the package: `sysusers.d` does not modify an existing user, and `WorkingDirectory=~` follows the home in `/etc/passwd`. To move to `/var/lib/preaur`:
+
+1. Stop the old schedule and wait until nothing runs as `preaur`:
 
    ```bash
-   sudo systemctl daemon-reload
+   sudo systemctl --user -M preaur@ disable --now preaur.timer
+   sudo loginctl disable-linger preaur
+   pgrep -u preaur   # should print nothing
+   ```
+
+   Remove `~preaur/.config/systemd/user/preaur.*`. If you wrote `/etc/systemd/system/preaur.{service,timer}` yourself, remove those as well, since they override the units shipped by the package.
+
+2. Optionally delete `~preaur/preaur/work/`; it is recreated on the next run. Back up its build logs first if `logdest` is not configured elsewhere.
+
+3. Copy the home directory and point the user at it. Do not use `usermod -m`: with the PKGBUILD sandbox enabled, `/var/lib/preaur/metadata` already exists and `usermod -m` refuses an existing target.
+
+   ```bash
+   sudo systemd-tmpfiles --create /usr/lib/tmpfiles.d/preaur.conf
+   sudo rsync -aHAX /home/preaur/ /var/lib/preaur/
+   sudo usermod -d /var/lib/preaur preaur
+   getent passwd preaur   # the sixth field should be /var/lib/preaur
+   ```
+
+4. Look for remaining references to the old path, such as a `file:///home/preaur/...` server in `pacman.conf`, a web server serving the repository, `safe.directory` in `.gitconfig`, `IdentityFile` in `.ssh/config`, or absolute `include` paths in `preaur.config.yaml`:
+
+   ```bash
+   sudo grep -rIl /home/preaur /etc /var/lib/preaur --exclude-dir=work --exclude-dir=metadata
+   ```
+
+5. Run once by hand, then enable the timer:
+
+   ```bash
+   sudo systemctl start preaur.service && journalctl -u preaur -e
    sudo systemctl enable --now preaur.timer
    ```
 
-   Check runs with `systemctl status preaur` and `journalctl -u preaur`.
+6. After a few successful runs, delete `/home/preaur`. Until then, `sudo usermod -d /home/preaur preaur` rolls back.
+
+The user keeps its UID; changing it would require re-owning every file for no functional gain.
 
 ## Cleaning Outdated Packages
 

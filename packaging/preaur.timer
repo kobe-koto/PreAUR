@@ -1,0 +1,12 @@
+[Unit]
+Description=Run PreAUR twice a day
+
+[Timer]
+# Change the schedule with "systemctl edit preaur.timer"; start the override
+# with an empty "OnCalendar=" line to drop these defaults.
+OnCalendar=*-*-* 2:00:00
+OnCalendar=*-*-* 13:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

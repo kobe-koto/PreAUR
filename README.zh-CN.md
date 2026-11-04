@@ -244,17 +244,24 @@ preaur -c custom.config.yaml
 
 ## 部署与定时运行
 
-PreAUR 在设计时就考虑了无人值守运行。
+PreAUR 为无人值守运行而设计。它以专用的系统用户 `preaur` 运行，家目录是 `/var/lib/preaur`，项目目录是 `/var/lib/preaur/preaur`，由 systemd timer 定时启动。
 
-### 创建 preaur-build 用户组
+AUR 包（`preaur-git`、`preaur-bin`）会创建该用户并附带 systemd unit。不使用 AUR 包时，源码仓库的 [`packaging/`](./packaging) 目录里有同样的文件。
+
+### 创建 preaur 用户
+
+AUR 包在安装时通过 `sysusers.d` 和 `tmpfiles.d` 完成这一步：创建用户组 `preaur-build`、用户 `preaur`（属于 `preaur-build`，家目录 `/var/lib/preaur`，shell 为 bash，没有密码）以及它的家目录。已经存在的 `preaur` 用户不会被修改，参见[从 /home/preaur 迁移](#从-homepreaur-迁移)。
+
+不使用 AUR 包时，在源码仓库中执行：
 
 ```bash
-groupadd preaur-build
+sudo systemd-sysusers packaging/preaur.sysusers
+sudo systemd-tmpfiles --create packaging/preaur.tmpfiles
 ```
 
 ### 为 `preaur-build` 用户组配置免密 sudo
 
-运行 `sudo visudo`，追加以下权限：
+这些规则不会自动安装，因为它们让 `preaur-build` 的每个成员都拥有等同 root 的权限。执行 `sudo visudo -f /etc/sudoers.d/preaur` 并添加以下内容（AUR 包也在 `/usr/share/doc/` 下附带了 `preaur.sudoers.example`）：
 
 ```sudoers
 Defaults:%preaur-build env_keep += "SOURCE_DATE_EPOCH SRCDEST SRCPKGDEST PKGDEST LOGDEST NPROC MAKEFLAGS PACKAGER GNUPGHOME BUILDTOOL"
@@ -262,15 +269,13 @@ Defaults:%preaur-build env_keep += "SOURCE_DATE_EPOCH SRCDEST SRCPKGDEST PKGDEST
 %preaur-build ALL=(ALL) NOPASSWD: /usr/bin/systemd-nspawn, /usr/bin/mkarchroot
 ```
 
-### 为 PreAUR 创建用户
+### 准备项目目录
+
+从这里到配置定时任务之前的步骤都以 `preaur` 用户身份执行（`sudo -iu preaur`）。项目放在 `~/preaur`：可以克隆你的项目仓库，也可以新建目录并在其中编写 `preaur.config.yaml`：
 
 ```bash
-useradd -m -G preaur-build preaur
-# 让该用户的 systemd timer 在没有登录会话时也能运行
-loginctl enable-linger preaur
+git clone <your-project-repo> ~/preaur
 ```
-
-后续步骤都以 `preaur` 用户身份执行（例如 `sudo -iu preaur`），项目目录为 `~/preaur`。
 
 ### 配置 AUR 推送（可选）
 
@@ -284,60 +289,85 @@ ssh aur@aur.archlinux.org help
 
 ### 配置定时任务
 
-**使用 Systemd Timer**
+AUR 包会把 `preaur.service` 和 `preaur.timer` 安装到 `/usr/lib/systemd/system/`，但不会启用。不使用 AUR 包时，从源码仓库复制：
 
-以 system service 的方式运行 PreAUR，并设置 `User=preaur`。如果改用 user unit，还需要执行 `loginctl enable-linger preaur`：timer 只在该用户的 service manager 运行时才会触发，而专用账号平时不会登录。
+```bash
+sudo install -Dm644 packaging/preaur.service packaging/preaur.timer -t /etc/systemd/system/
+```
 
-下面假设 PreAUR 的项目目录是 `~preaur/preaur`。
+该 service 以 `preaur` 身份在 `~/preaur` 中运行一次 PreAUR：
 
-1. 创建 service 文件：
-   `/etc/systemd/system/preaur.service`
+```ini
+[Service]
+Type=oneshot
+User=preaur
+Group=preaur
+# "~" 是 User= 指定用户的 home 目录。systemd 在这里只接受单独的 "~"，
+# 所以用 env -C 进入其下的项目目录。
+WorkingDirectory=~
+ExecStart=/usr/bin/env -C preaur /usr/bin/preaur
+```
 
-   ```ini
-   [Unit]
-   Description=PreAUR Automated Package Builder
-   Wants=network-online.target
-   After=network-online.target
+不要添加 `NoNewPrivileges=yes`：PreAUR 需要通过 sudo 调用 devtools 和 systemd-nspawn。`PrivateTmp=`、`ProtectSystem=` 等沙箱选项也可能导致 chroot 构建失败。
 
-   [Service]
-   Type=oneshot
-   User=preaur
-   Group=preaur
-   # "~" 是 User= 指定用户的 home 目录。systemd 在这里只接受单独的 "~"，
-   # 所以用 env -C 进入其下的项目目录。
-   WorkingDirectory=~
-   # 如果你是安装的 aur/preaur-{git,bin}, 它应该在这里
-   ExecStart=/usr/bin/env -C preaur /usr/bin/preaur
-   ```
+timer 默认在 2:00 和 13:00 运行。要修改时间，执行 `sudo systemctl edit preaur.timer`，先清空默认值再写入自己的：
 
-   不要添加 `NoNewPrivileges=yes`：PreAUR 需要通过 sudo 调用 devtools 和 systemd-nspawn。`PrivateTmp=`、`ProtectSystem=` 等沙箱选项也可能导致 chroot 构建失败。
+```ini
+[Timer]
+OnCalendar=
+OnCalendar=*-*-* 4:00:00
+```
 
-2. 创建 timer 文件：
-   `/etc/systemd/system/preaur.timer`
+启用 timer，并用 `systemctl status preaur` 和 `journalctl -u preaur` 查看运行情况：
 
-   ```ini
-   [Unit]
-   Description=Run PreAUR twice a day
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now preaur.timer
+```
 
-   [Timer]
-   # 每天凌晨 2 点
-   OnCalendar=*-*-* 2:00:00
-   # 每天下午 1 点
-   OnCalendar=*-*-* 13:00:00
-   Persistent=true
+这里使用 system unit，是因为 user unit 的 timer 只在该用户的 service manager 运行时才会触发；对于没人登录的账号，这需要执行 `loginctl enable-linger preaur`。
 
-   [Install]
-   WantedBy=timers.target
-   ```
+### 从 /home/preaur 迁移
 
-3. 启用 timer：
+本指南早期的版本用 `useradd -m` 创建 `preaur`，所以它的家目录是 `/home/preaur`，并用 user unit 定时运行。安装 AUR 包后这套部署仍然可以继续使用：`sysusers.d` 不会修改已存在的用户，`WorkingDirectory=~` 跟随 `/etc/passwd` 中的家目录。要迁移到 `/var/lib/preaur`：
+
+1. 停止原来的定时任务，并等到没有以 `preaur` 身份运行的进程：
 
    ```bash
-   sudo systemctl daemon-reload
+   sudo systemctl --user -M preaur@ disable --now preaur.timer
+   sudo loginctl disable-linger preaur
+   pgrep -u preaur   # 应该没有输出
+   ```
+
+   删除 `~preaur/.config/systemd/user/preaur.*`。如果你自己写过 `/etc/systemd/system/preaur.{service,timer}`，也一并删除，因为它们会覆盖 AUR 包附带的 unit。
+
+2. 可选：删除 `~preaur/preaur/work/`，下次运行时会重新生成。如果没有另外配置 `logdest`，先备份其中的构建日志。
+
+3. 复制家目录，并把用户的家目录指向新位置。不要使用 `usermod -m`：启用 PKGBUILD sandbox 时 `/var/lib/preaur/metadata` 已经存在，而 `usermod -m` 在目标目录已存在时会拒绝执行。
+
+   ```bash
+   sudo systemd-tmpfiles --create /usr/lib/tmpfiles.d/preaur.conf
+   sudo rsync -aHAX /home/preaur/ /var/lib/preaur/
+   sudo usermod -d /var/lib/preaur preaur
+   getent passwd preaur   # 第 6 段应为 /var/lib/preaur
+   ```
+
+4. 查找仍然引用旧路径的地方，例如 `pacman.conf` 中的 `file:///home/preaur/...` 服务器、提供仓库访问的 Web 服务器、`.gitconfig` 中的 `safe.directory`、`.ssh/config` 中的 `IdentityFile`，或 `preaur.config.yaml` 中的绝对 `include` 路径：
+
+   ```bash
+   sudo grep -rIl /home/preaur /etc /var/lib/preaur --exclude-dir=work --exclude-dir=metadata
+   ```
+
+5. 先手动运行一次，再启用 timer：
+
+   ```bash
+   sudo systemctl start preaur.service && journalctl -u preaur -e
    sudo systemctl enable --now preaur.timer
    ```
 
-   可以用 `systemctl status preaur` 和 `journalctl -u preaur` 查看运行情况。
+6. 确认运行正常几次后，删除 `/home/preaur`。在此之前，可以用 `sudo usermod -d /home/preaur preaur` 回滚。
+
+用户的 UID 保持不变；修改 UID 需要重新设置所有文件的属主，却没有实际收益。
 
 ## 清理过时的软件包
 
