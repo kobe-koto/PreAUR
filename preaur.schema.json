@@ -609,6 +609,71 @@
                                 ],
                                 "additionalProperties": false,
                                 "description": "RPM repository version checker."
+                            },
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "strip_version": {
+                                        "description": "Strip common version prefixes before comparison.",
+                                        "type": "boolean"
+                                    },
+                                    "normalize": {
+                                        "description": "Normalize upstream version text.",
+                                        "type": "boolean"
+                                    },
+                                    "template": {
+                                        "description": "Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.",
+                                        "type": "string"
+                                    },
+                                    "type": {
+                                        "type": "string",
+                                        "const": "json",
+                                        "description": "Use a JSON HTTP response."
+                                    },
+                                    "url": {
+                                        "type": "string",
+                                        "description": "URL returning JSON."
+                                    },
+                                    "params": {
+                                        "description": "Query parameters appended to url. String values support {{timestamp}} (milliseconds) and {{random=N}} (N random [A-Za-z0-9] characters, 1-256), generated on every request.",
+                                        "type": "object",
+                                        "propertyNames": {
+                                            "type": "string"
+                                        },
+                                        "additionalProperties": {
+                                            "anyOf": [
+                                                {
+                                                    "type": "string"
+                                                },
+                                                {
+                                                    "type": "number"
+                                                },
+                                                {
+                                                    "type": "boolean"
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "path": {
+                                        "type": "string",
+                                        "description": "JSONPath expression selecting version strings or numbers, e.g. $[0].releases[?(@.type==\"release\")].version. Filter expressions use the safe evaluator."
+                                    },
+                                    "sort_by": {
+                                        "description": "How to pick among matches: version takes the newest by version comparison; none takes the first match. Default: version.",
+                                        "type": "string",
+                                        "enum": [
+                                            "version",
+                                            "none"
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "type",
+                                    "url",
+                                    "path"
+                                ],
+                                "additionalProperties": false,
+                                "description": "JSON HTTP response version checker."
                             }
                         ],
                         "description": "Upstream version checker."

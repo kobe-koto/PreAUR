@@ -1,4 +1,4 @@
-.TH PREAUR-CONFIG 5 "" "PreAUR 0.0.6" "File Formats"
+.TH PREAUR-CONFIG 5 "" "PreAUR 0.0.7" "File Formats"
 .SH NAME
 preaur.config.yaml \- PreAUR configuration file
 .SH DESCRIPTION
@@ -345,6 +345,33 @@ Type: string. Required: yes. Repository base URL.
 .TP
 .B pkg
 Type: string. Required: yes. RPM package name.
+.SS
+packages[].checker: json
+JSON HTTP response version checker.
+.TP
+.B strip_version
+Type: boolean. Required: no. Strip common version prefixes before comparison.
+.TP
+.B normalize
+Type: boolean. Required: no. Normalize upstream version text.
+.TP
+.B template
+Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.
+.TP
+.B type
+Type: "json". Required: yes. Use a JSON HTTP response.
+.TP
+.B url
+Type: string. Required: yes. URL returning JSON.
+.TP
+.B params
+Type: object. Required: no. Query parameters appended to url. String values support {{timestamp}} (milliseconds) and {{random=N}} (N random [A\-Za\-z0\-9] characters, 1\-256), generated on every request.
+.TP
+.B path
+Type: string. Required: yes. JSONPath expression selecting version strings or numbers, e.g. $[0].releases[?(@.type=="release")].version. Filter expressions use the safe evaluator.
+.TP
+.B sort_by
+Type: version | none. Required: no. How to pick among matches: version takes the newest by version comparison; none takes the first match. Default: version.
 .SS
 packages[].dummy_packages[]
 A generated dummy dependency package.

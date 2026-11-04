@@ -203,6 +203,20 @@ packages:
       url: "https://packages.microsoft.com/yumrepos/vscode"
       pkg: "code"
 
+  # JSON HTTP API mapped package
+  - pkgname: "clion"
+    maintainer: "johndoe"
+    checker:
+      type: "json"
+      url: "https://data.services.jetbrains.com/products"
+      params:
+        code: "CL"
+        release.type: "release"
+        _: "{{timestamp}}" # {{timestamp}} = milliseconds, {{random=N}} = N random [A-Za-z0-9] characters; regenerated per request
+      # JSONPath (jsonpath-plus); filters such as [?(@.type=="release")] are supported
+      path: "$[0].releases[*].version"
+      sort_by: "version" # newest by version comparison (default); "none" takes the first match
+
   - pkgname: spotify
     maintainer: johndoe
     checker:

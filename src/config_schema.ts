@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { findInvalidPlaceholder, RANDOM_PLACEHOLDER_MAX } from './http';
+
 const stringList = (description: string) => z.array(z.string()).describe(description);
 
 const PreaurWebhookEventTagSchema = z.enum([
@@ -141,10 +143,25 @@ const PreaurRpmCheckerSchema = z.object({
     pkg: z.string().describe('RPM package name.'),
 }).strict().describe('RPM repository version checker.');
 
+const jsonParamValue = z.union([z.string(), z.number(), z.boolean()]).refine(
+    value => typeof value !== 'string' || findInvalidPlaceholder(value) === null,
+    { message: `Unsupported placeholder. Use {{timestamp}} or {{random=N}} with N from 1 to ${RANDOM_PLACEHOLDER_MAX}.` },
+);
+
+const PreaurJsonCheckerSchema = z.object({
+    ...PreaurCheckerBaseShape,
+    type: z.literal('json').describe('Use a JSON HTTP response.'),
+    url: z.string().describe('URL returning JSON.'),
+    params: z.record(z.string(), jsonParamValue).optional().describe('Query parameters appended to url. String values support {{timestamp}} (milliseconds) and {{random=N}} (N random [A-Za-z0-9] characters, 1-256), generated on every request.'),
+    path: z.string().describe('JSONPath expression selecting version strings or numbers, e.g. $[0].releases[?(@.type=="release")].version. Filter expressions use the safe evaluator.'),
+    sort_by: z.enum(['version', 'none']).optional().describe('How to pick among matches: version takes the newest by version comparison; none takes the first match. Default: version.'),
+}).strict().describe('JSON HTTP response version checker.');
+
 const PreaurCheckerSchema = z.discriminatedUnion('type', [
     PreaurGitHubCheckerSchema,
     PreaurDebCheckerSchema,
     PreaurRpmCheckerSchema,
+    PreaurJsonCheckerSchema,
 ]).describe('Upstream version checker.');
 
 const PreaurDummyPackageSchema = z.object({
@@ -200,6 +217,7 @@ export type PreaurChecker = z.output<typeof PreaurCheckerSchema>;
 export type PreaurGitHubChecker = z.output<typeof PreaurGitHubCheckerSchema>;
 export type PreaurDebChecker = z.output<typeof PreaurDebCheckerSchema>;
 export type PreaurRpmChecker = z.output<typeof PreaurRpmCheckerSchema>;
+export type PreaurJsonChecker = z.output<typeof PreaurJsonCheckerSchema>;
 export type PreaurDummyPackage = z.output<typeof PreaurDummyPackageSchema>;
 export type PreaurPackage = z.output<typeof PreaurPackageSchema>;
 export type PreaurWebhookConfig = z.output<typeof PreaurWebhookSchema>;

@@ -163,3 +163,102 @@ describe('DebProvider over HTTP', () => {
             .rejects.toThrow(/Packages: Request failed with status code 503/);
     });
 });
+
+import { JsonProvider, selectJsonVersions } from '../src/checker';
+import { renderParamPlaceholders } from '../src/http';
+import { PreaurRawConfigSchema } from '../src/config_schema';
+import type { PreaurJsonChecker } from '../src/config';
+
+describe('renderParamPlaceholders', () => {
+    test('fills {{timestamp}} and {{random=N}} and leaves other values alone', () => {
+        const before = Date.now();
+        const rendered = renderParamPlaceholders({ _: '{{timestamp}}', nonce: 'n-{{random=12}}', code: 'CL', n: 3 })!;
+        const ts = Number(rendered._);
+        expect(ts).toBeGreaterThanOrEqual(before);
+        expect(ts).toBeLessThanOrEqual(Date.now());
+        expect(rendered.nonce).toMatch(/^n-[A-Za-z0-9]{12}$/);
+        expect(rendered.code).toBe('CL');
+        expect(rendered.n).toBe(3);
+    });
+
+    test('generates a new random value on every call', () => {
+        const a = renderParamPlaceholders({ r: '{{random=32}}' })!.r;
+        const b = renderParamPlaceholders({ r: '{{random=32}}' })!.r;
+        expect(a).not.toBe(b);
+    });
+
+    test('rejects unsupported placeholders', () => {
+        expect(() => renderParamPlaceholders({ r: '{{random=0}}' })).toThrow(/Unsupported placeholder \{\{random=0\}\}/);
+        expect(() => renderParamPlaceholders({ r: '{{uuid}}' })).toThrow(/Unsupported placeholder/);
+    });
+});
+
+describe('selectJsonVersions', () => {
+    const products = [{ releases: [
+        { type: 'release', version: '2026.2.4' },
+        { type: 'eap', version: '2026.3' },
+        { type: 'release', version: '2026.2.4.1' },
+        { type: 'release', version: null },
+    ] }];
+
+    test('supports filter expressions', () => {
+        expect(selectJsonVersions(products, '$[0].releases[?(@.type=="release")].version')).toEqual(['2026.2.4', '2026.2.4.1']);
+    });
+
+    test('returns a single match as a list and accepts numbers', () => {
+        expect(selectJsonVersions({ latest: 42 }, '$.latest')).toEqual(['42']);
+        expect(selectJsonVersions({}, '$.missing')).toEqual([]);
+    });
+
+    test('does not evaluate arbitrary JavaScript in filters', () => {
+        expect(() => selectJsonVersions(products, '$[0].releases[?(process.exit(1))].version')).toThrow();
+    });
+});
+
+describe('JsonProvider', () => {
+    let getSpy: ReturnType<typeof spyOn> | undefined;
+    afterEach(() => getSpy?.mockRestore());
+
+    const json = (extra: Partial<PreaurJsonChecker> = {}): PreaurJsonChecker => ({
+        type: 'json',
+        url: 'https://data.example.com/products',
+        path: '$[0].releases[*].version',
+        ...extra,
+    });
+    const body = [{ releases: [{ version: '2026.2.3' }, { version: '2026.2.4.1' }, { version: '2026.10' }] }];
+
+    test('picks the newest version and sends rendered params', async () => {
+        getSpy = spyOn(http, 'getJson').mockResolvedValue(body);
+        const result = await new JsonProvider().check(json({ params: { code: 'CL', 'release.type': 'release', _: '{{timestamp}}' } }));
+        expect(result).toEqual({ version: '2026.10' });
+        const params = getSpy.mock.calls[0]![1].params;
+        expect(params).toMatchObject({ code: 'CL', 'release.type': 'release' });
+        expect(params._).toMatch(/^\d+$/);
+    });
+
+    test('sort_by none takes the first match that passes the template', async () => {
+        getSpy = spyOn(http, 'getJson').mockResolvedValue(body);
+        expect(await new JsonProvider().check(json({ sort_by: 'none' }))).toEqual({ version: '2026.2.3' });
+        expect(await new JsonProvider().check(json({ sort_by: 'none', template: '{~pkgver}.{~pkgver}.{~pkgver}.{_hotfix}' })))
+            .toEqual({ version: '2026.2.4.1' });
+    });
+
+    test('reports when the path matches nothing', async () => {
+        getSpy = spyOn(http, 'getJson').mockResolvedValue({});
+        await expect(new JsonProvider().check(json())).rejects.toThrow(/matched no version string/);
+    });
+});
+
+describe('json checker config', () => {
+    const configWith = (params: Record<string, unknown>) => ({
+        maintainers: [{ id: 'm', name: 'M', email: 'm@example.com' }],
+        packages: [{ pkgname: 'clion', maintainer: 'm', checker: { type: 'json', url: 'https://x', path: '$..version', params } }],
+    });
+
+    test('accepts supported placeholders and rejects others', () => {
+        expect(PreaurRawConfigSchema.safeParse(configWith({ _: '{{timestamp}}', r: '{{random=256}}' })).success).toBe(true);
+        const bad = PreaurRawConfigSchema.safeParse(configWith({ r: '{{random=257}}' }));
+        expect(bad.success).toBe(false);
+        expect(bad.error?.message).toMatch(/Unsupported placeholder/);
+    });
+});

@@ -216,6 +216,21 @@ RPM repository version checker.
 | `url` | yes | string |  | Repository base URL. |
 | `pkg` | yes | string |  | RPM package name. |
 
+#### packages[].checker: json
+
+JSON HTTP response version checker.
+
+| Key | Required | Type | Default | Description |
+| --- | --- | --- | --- | --- |
+| `strip_version` | no | boolean |  | Strip common version prefixes before comparison. |
+| `normalize` | no | boolean |  | Normalize upstream version text. |
+| `template` | no | string |  | Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest. |
+| `type` | yes | "json" |  | Use a JSON HTTP response. |
+| `url` | yes | string |  | URL returning JSON. |
+| `params` | no | object |  | Query parameters appended to url. String values support {{timestamp}} (milliseconds) and {{random=N}} (N random [A-Za-z0-9] characters, 1-256), generated on every request. |
+| `path` | yes | string |  | JSONPath expression selecting version strings or numbers, e.g. $[0].releases[?(@.type=="release")].version. Filter expressions use the safe evaluator. |
+| `sort_by` | no | version \| none |  | How to pick among matches: version takes the newest by version comparison; none takes the first match. Default: version. |
+
 #### packages[].dummy_packages[]
 
 A generated dummy dependency package.

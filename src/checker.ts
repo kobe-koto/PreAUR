@@ -1,8 +1,9 @@
 import * as zlib from 'node:zlib';
 import { promisify } from 'node:util';
-import type { PreaurChecker, PreaurDebChecker, PreaurGitHubChecker, PreaurRpmChecker } from './config';
+import { JSONPath } from 'jsonpath-plus';
+import type { PreaurChecker, PreaurDebChecker, PreaurGitHubChecker, PreaurJsonChecker, PreaurRpmChecker } from './config';
 import { constructMessager } from './logger';
-import { HttpError, http } from './http';
+import { HttpError, http, renderParamPlaceholders } from './http';
 
 const gunzip = promisify(zlib.gunzip);
 const UpdateCheckerMessager = constructMessager('Update Checker');
@@ -360,6 +361,47 @@ export class RpmProvider implements CheckerProvider<PreaurRpmChecker> {
     }
 }
 
+/** Evaluates a JSONPath expression and keeps the string and finite number matches as versions. */
+export function selectJsonVersions(data: unknown, path: string): string[] {
+    const matches = (JSONPath({ path, json: data as any, wrap: true, eval: 'safe' }) ?? []) as unknown[];
+    return matches
+        .filter(value => typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)))
+        .map(value => String(value).trim())
+        .filter(Boolean);
+}
+
+export class JsonProvider implements CheckerProvider<PreaurJsonChecker> {
+    name = 'json' as const;
+
+    async check(config: PreaurJsonChecker): Promise<CheckerResult> {
+        const { url, path } = config;
+        if (!url || !path) {
+            throw new Error('Json provider requires "url" and "path" configuration.');
+        }
+
+        let data: unknown;
+        try {
+            data = await http.getJson(url, { params: renderParamPlaceholders(config.params) });
+        } catch (e: any) {
+            throw new Error(`Failed to fetch JSON from ${url}: ${e.message}`);
+        }
+
+        const versions = selectJsonVersions(data, path);
+        if (versions.length === 0) {
+            throw new Error(`JSONPath "${path}" matched no version string in the response from ${url}.`);
+        }
+
+        const candidates = versions.map(version => ({ version }));
+        const latest = config.sort_by === 'none'
+            ? selectLatestCandidate(config, candidates.filter(c => matchesTemplate(config, applyCommonTransforms(config, c.version))).slice(0, 1))
+            : selectLatestCandidate(config, candidates);
+        if (!latest) {
+            throw new Error(`No version from ${url} matched template "${config.template}".`);
+        }
+        return latest;
+    }
+}
+
 class CheckerRegistry {
     private providers: Map<string, CheckerProvider> = new Map();
 
@@ -376,6 +418,7 @@ export const checkerRegistry = new CheckerRegistry();
 checkerRegistry.register(new GitHubProvider());
 checkerRegistry.register(new DebProvider());
 checkerRegistry.register(new RpmProvider());
+checkerRegistry.register(new JsonProvider());
 
 export async function fetchLatestVersion(config: PreaurChecker): Promise<CheckerResult | null> {
     const provider = checkerRegistry.get(config.type);
