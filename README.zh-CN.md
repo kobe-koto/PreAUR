@@ -356,3 +356,13 @@ repo:
 - 只有在有包需要处理时才会执行清理；没有任何包，或 `-p` 指定的包不在配置中时，程序会在清理之前退出。
 
 这些选项覆盖不到的情况，可以对仓库目录使用 `paccache -rk1 -c repo/<name>`，或者看看我的 [archavenger](https://github.com/kobe-koto/archavenger)。
+
+## 开发
+
+```bash
+bun install
+bun test            # 运行测试
+bun run typecheck   # 类型检查 src/（仅 Node 类型）和 test/（Bun 类型）
+bun run build       # 用 esbuild 打包到 dist/index.js
+bun run gen-schema  # 重新生成 preaur.schema.json、docs/config-reference.md 和 man 手册
+```

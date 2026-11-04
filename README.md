@@ -356,3 +356,13 @@ With `repo.removeOrphans`, PreAUR also cleans the repository before dropping the
 - Cleanup runs only when there is something to process; a run with no packages, or with `-p` naming a package not in the config, exits before it.
 
 For anything these options do not cover, `paccache -rk1 -c repo/<name>` works on the repository directory, or check out my [archavenger](https://github.com/kobe-koto/archavenger).
+
+## Development
+
+```bash
+bun install
+bun test            # tests
+bun run typecheck   # type-check src/ (Node types only) and test/ (Bun types)
+bun run build       # bundle to dist/index.js with esbuild
+bun run gen-schema  # regenerate preaur.schema.json, docs/config-reference.md and the man pages
+```
