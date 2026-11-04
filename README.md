@@ -250,7 +250,7 @@ The AUR packages (`preaur-git`, `preaur-bin`) create the user and ship the syste
 
 ### Create the preaur User
 
-The AUR packages do this on install with `sysusers.d` and `tmpfiles.d`: they create the group `preaur-build`, the user `preaur` (member of `preaur-build`, home `/var/lib/preaur`, shell bash, no password) and its home directory. An existing `preaur` user is left unchanged; see [Migrating From /home/preaur](#migrating-from-homepreaur).
+The AUR packages do this on install with `sysusers.d` and `tmpfiles.d`: they create the group `preaur-build`, the user `preaur` (member of `preaur-build`, home `/var/lib/preaur`, shell bash, no password), its home directory and `/var/lib/preaur/metadata` for the PKGBUILD sandbox chroots. An existing `preaur` user is left unchanged; see [Migrating From /home/preaur](#migrating-from-homepreaur).
 
 Without the package, from a source checkout:
 

@@ -250,7 +250,7 @@ AUR 包（`preaur-git`、`preaur-bin`）会创建该用户并附带 systemd unit
 
 ### 创建 preaur 用户
 
-AUR 包在安装时通过 `sysusers.d` 和 `tmpfiles.d` 完成这一步：创建用户组 `preaur-build`、用户 `preaur`（属于 `preaur-build`，家目录 `/var/lib/preaur`，shell 为 bash，没有密码）以及它的家目录。已经存在的 `preaur` 用户不会被修改，参见[从 /home/preaur 迁移](#从-homepreaur-迁移)。
+AUR 包在安装时通过 `sysusers.d` 和 `tmpfiles.d` 完成这一步：创建用户组 `preaur-build`、用户 `preaur`（属于 `preaur-build`，家目录 `/var/lib/preaur`，shell 为 bash，没有密码）、它的家目录，以及存放 PKGBUILD sandbox chroot 的 `/var/lib/preaur/metadata`。已经存在的 `preaur` 用户不会被修改，参见[从 /home/preaur 迁移](#从-homepreaur-迁移)。
 
 不使用 AUR 包时，在源码仓库中执行：
 

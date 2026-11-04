@@ -498,6 +498,7 @@ async function ensureMetadataRootExists(sandbox: ResolvedPkgbuildSandboxOptions)
     }
 
     const plan = await buildMetadataRootInitCommand(sandbox);
+    await ensureMetadataRootParent(sandbox.root);
     console.log(PkgbuildSandboxMessager(`Creating metadata chroot ${sandbox.root} with mkarchroot...`));
     try {
         await runLoggedCommand(plan.cmd, plan.args, 'Metadata chroot creation');
@@ -507,6 +508,24 @@ async function ensureMetadataRootExists(sandbox: ResolvedPkgbuildSandboxOptions)
     }
 
     await fs.access(sandbox.root);
+}
+
+/**
+ * mkarchroot resolves its target with `readlink -f`, which prints nothing when
+ * the parent directory is missing, and then fails with "Please specify a
+ * working directory". Create the parent first; it runs as the PreAUR user,
+ * which owns the default /var/lib/preaur.
+ */
+export async function ensureMetadataRootParent(root: string): Promise<void> {
+    const parent = path.dirname(path.resolve(root));
+    try {
+        await fs.mkdir(parent, { recursive: true });
+    } catch (e: any) {
+        if (e.code === 'EACCES' || e.code === 'EPERM') {
+            throw new Error(`Cannot create ${parent}, the parent directory of the PKGBUILD sandbox root ${root}: ${e.message}. Create it manually (for example: sudo install -d ${parent}).`);
+        }
+        throw e;
+    }
 }
 
 async function pathExists(target: string): Promise<boolean> {

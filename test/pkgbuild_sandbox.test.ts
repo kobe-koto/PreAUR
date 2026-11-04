@@ -5,6 +5,7 @@ import * as path from 'node:path';
 
 import {
     buildMetadataRootInitCommand,
+    ensureMetadataRootParent,
     buildMetadataRootMaintenanceCommand,
     buildPkgbuildSandboxCommand,
     detectVcsSourcePackages,
@@ -229,6 +230,28 @@ describe('metadata root management', () => {
         expect(plan.cmd).toBe('setarch');
         expect(plan.args.slice(0, 2)).toEqual(['x86_64', 'mkarchroot']);
         expect(plan.args.slice(-4)).toEqual(['base-devel', 'multilib-devel', 'git', 'pacman-contrib']);
+    });
+
+    test('creates missing parent directories of the root but not the root itself', async () => {
+        const base = await makeDir('preaur-metadata-parent-');
+        const root = path.join(base, 'var', 'lib', 'preaur', 'metadata', 'extra-x86_64');
+
+        await ensureMetadataRootParent(root);
+        await ensureMetadataRootParent(root);
+
+        expect((await fs.stat(path.dirname(root))).isDirectory()).toBe(true);
+        await expect(fs.access(root)).rejects.toThrow();
+    });
+
+    test('explains how to create a parent it cannot create', async () => {
+        const base = await makeDir('preaur-metadata-parent-');
+        await fs.chmod(base, 0o500);
+        try {
+            await expect(ensureMetadataRootParent(path.join(base, 'metadata', 'extra-x86_64')))
+                .rejects.toThrow(/Create it manually/);
+        } finally {
+            await fs.chmod(base, 0o700);
+        }
     });
 
     test('refuses to create a root for non-devtools builders', async () => {
