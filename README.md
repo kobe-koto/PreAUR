@@ -2,18 +2,18 @@
 
 English | [简体中文](./README.zh-CN.md)
 
-**PreAUR** is an automated Arch Linux AUR (not only) package builder and maintainer (kinda) written in TypeScript. 
+**PreAUR** is an automated Arch Linux AUR (not only) package builder and maintainer (kinda) written in TypeScript.
 
 It streamlines the process of fetching, updating, building, and publishing packages, while automatically maintaining a local pacman repository.
 
 ## Features
 
-- **Automated Updates**: Checks for new versions via upstream providers (like GitHub releases) or dynamic `pkgver()` functions, and updates your `PKGBUILD` seamlessly.
+- **Automated Updates**: Checks for new versions via upstream checkers (GitHub releases, Debian/APT and RPM repositories, or any JSON HTTP API) or dynamic `pkgver()` functions, and updates your `PKGBUILD` seamlessly.
 - **Git Syncing**: Clones AUR repositories (into `./pkgbuilds/`) and optionally commits/pushes updates back to the AUR via SSH.
-- **Clean Chroot Building**: Defers to `devtools` (e.g., `extra-x86_64-build` or `pkgctl build`) to build packages safely, intelligently allocating `$MAKEFLAGS` based on your CPU configuration.
-- **Local Repository**: Automatically collects built `.pkg.tar.zst` artifacts and maintains a local pacman database (`repo-add`) in `./repo/`.
-- **Smart Caching**: Recognizes if a package with the same version/pkgrel has already been built to avoid redundant compilation.
-  For a package without a `checker` whose PKGBUILD has a static version (no `pkgver()` and no top-level command substitution, `eval`, or `source`), PreAUR records the package git commit in `data/versions.json` (`version_marker`). While the commit, git URL, parser, and builder stay the same, later runs reuse the stored version and skip the PKGBUILD sandbox commands.
+- **Clean Chroot Building**: Defers to `devtools` (e.g., `extra-x86_64-build` or `pkgctl build`) to build packages safely, setting `$MAKEFLAGS` from `resources.cpu`.
+- **Local Repository**: Automatically collects built `.pkg.tar.zst` artifacts and maintains a local pacman database (`repo-add`) in `./repo/<repo.name>/`.
+- **Smart Caching**: Skips packages whose version/pkgrel is already built, and skips re-parsing static PKGBUILDs whose git commit has not changed.
+- **Ownership Approval**: Builds only packages and AUR maintainers you have approved, and asks again when ownership changes.
 
 ## Getting Started
 
@@ -26,21 +26,55 @@ paru -S preaur-git # Recommended because i like it
 paru -S preaur-bin
 ```
 
+Both provide `/usr/bin/preaur`, the man pages `preaur(1)` and `preaur-config(5)`, and the config schema.
+
+From source (requires [Bun](https://bun.sh)):
+
+```bash
+git clone https://github.com/kobe-koto/PreAUR.git && cd PreAUR
+bun install
+bun run start   # same as `preaur`
+```
+
 ### Configuration
 
-Preaur relies on a configuration file to run. 
+PreAUR works in the current directory: it reads `preaur.config.yaml` and `.env` from there, and keeps its state (`data/`), AUR checkouts (`pkgbuilds/`), build files (`work/`), logs (`logs/`) and the local repository (`repo/`) there too. Create a dedicated project directory and always run `preaur` from it:
 
-Please see the [`preaur.config.yaml.example`](./preaur.config.yaml.example) file for a complete example configuration. You can also use the config schema by prepend this line:
+```bash
+mkdir ~/preaur && cd ~/preaur
+curl -o preaur.config.yaml https://raw.githubusercontent.com/kobe-koto/PreAUR/main/preaur.config.yaml.example
+```
+
+[`preaur.config.yaml.example`](./preaur.config.yaml.example) is an annotated example. Every option is listed in [docs/config-reference.md](./docs/config-reference.md) (also `man 5 preaur-config`). The first line of the example enables editor completion and validation through the config schema:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/kobe-koto/PreAUR/main/preaur.schema.json
 ```
 
-Ensure you copy this file to `preaur.config.yaml` before running the CLI:
+#### First Run: Approving Packages and Maintainers
 
-```bash
-cp preaur.config.yaml.example preaur.config.yaml
+PreAUR only builds packages you have approved, from AUR maintainers you have approved. On every run it records each configured package in `data/known_packages` and each of its AUR maintainers and co-maintainers in `data/known_maintainers`. New entries are written with a `!!!` prefix, which means unapproved:
+
+```text
+# data/known_packages
+!!! visual-studio-code-bin # Maintainer: some-aur-user
+
+# data/known_maintainers
+!!! some-aur-user # Maintaining: visual-studio-code-bin
 ```
+
+While any entry is unapproved, the run stops before building with `Unapproved AUR ownership entries found`. That is expected on the first run. Review the entries, remove the `!!! ` prefix from the ones you trust, and run again.
+
+A package is marked unapproved again when its AUR maintainers change, or when its source changes to a custom `git` URL.
+
+#### Project Git Automation
+
+If the project directory is a git repository with the configured remote (`origin` by default), PreAUR keeps `data/` in sync with it. This is on by default (`git.enabled: true`):
+
+- Before each run it fetches and runs `git pull --ff-only`. With `git.sync.allow_remote_overwrite_local: true` it runs `git reset --hard <remote>/<branch>` instead, discarding local changes.
+- During the run it commits changes in `data/` (versions, approval lists), and at the end it pushes them (`git.push.force` adds `--force`).
+
+If the directory is not a git repository or the remote does not exist, this is skipped with a warning. Set `git.enabled: false` to turn it off.
 
 #### Chroot Pacman Repositories
 
@@ -59,8 +93,10 @@ config:
         include:
           - ./pacman-myrepo.conf
         lines:
-          - "Server = file:///home/preaur/repo/$arch"
+          - "Server = https://repo.example.org/$repo/os/$arch"
 ```
+
+Only the generated pacman.conf is bind-mounted into the chroot, so a `Server` must be reachable from inside it (for example an http(s) URL); a `file://` path on the host is not visible. To install packages that PreAUR built itself, use a package's `repo_packages` instead.
 
 When `chrootPacman` is configured, PreAUR also asks `makechrootpkg` to update the working chroot copy so custom repository databases are synced before dependency installation.
 
@@ -76,24 +112,17 @@ Metadata commands run in a dedicated chroot root managed by PreAUR, separate fro
 
 Metadata commands themselves never install packages. With `ephemeral: true` (the default), each command runs with `systemd-nspawn --volatile=overlay`: the root is mounted read-only with a tmpfs overlay on top, so nothing is copied and any changes are discarded when the command exits. This works on any filesystem. Commands take a shared `flock` on the root's lock file, and root updates take it exclusively, so the root never changes under a running command, including across concurrent PreAUR processes. With `ephemeral: false`, commands run directly on the root and are serialized.
 
-Because PreAUR installs tools into this root, it must not be a devtools build chroot; roots under `/var/lib/archbuild` are rejected. You can override it explicitly:
+Because PreAUR installs tools into this root, it must not be a devtools build chroot; roots under `/var/lib/archbuild` are rejected. To use another root or install extra tools:
 
 ```yaml
 config:
   pkgbuildSandbox:
-    enabled: true
-    root: /var/lib/preaur/metadata/extra-x86_64
-    command: systemd-nspawn
-    sudo: true
-    user: preaur
-    network: true
-    ephemeral: true
-    initRoot: true
+    root: /srv/preaur/metadata/extra-x86_64
     packages:
       - nodejs
 ```
 
-If you use passwordless sudo for scheduled runs, allow the sandbox command and `mkarchroot` as well as the build wrappers.
+The other `pkgbuildSandbox` options are listed in the [config reference](./docs/config-reference.md). For scheduled runs, see [passwordless sudo](#configure-passwordless-sudo-for-group-preaur-build).
 
 Packages can also request package-level pre-build setup inside the chroot. `pre-build-packages` are installed before the package build starts, and `pre-build-scripts` run as root in the chroot before the package build starts:
 
@@ -128,14 +157,7 @@ packages:
       lto: default        # and the makepkg LTO policy
 ```
 
-| Field | Values | Effect |
-|---|---|---|
-| `llvm` | boolean | `CC=clang`, `CXX=clang++`, `AR=llvm-ar`, `RANLIB=llvm-ranlib`, `NM=llvm-nm`, and makepkg strips with `llvm-strip`. Links with LLD in `driver` mode unless `lld: false` or `mold` is set. Installs `clang` and `llvm`. |
-| `mold` | `true`, `driver`, `replace`, `false` | Link with mold (see linker modes below). Installs `mold`. |
-| `lld` | `true`, `driver`, `replace`, `false` | Link with LLD (see linker modes below). `false` turns off the implicit LLD of `llvm` and links with GNU ld. Installs `lld`. |
-| `lto` | `default`, `off`, `thin`, `full` | `default` keeps the makepkg policy. `off` sets `!lto` and removes inherited `-flto*` flags. `thin` uses `-flto=thin` and requires `llvm: true`. `full` uses `-flto=full` with LLVM, or `-flto=auto` plus `gcc-ar`/`gcc-ranlib`/`gcc-nm` with GCC. |
-| `debug` | boolean | `false` replaces `debug` with `!debug` in `OPTIONS`; `true` forces `debug`. Unset keeps the chroot policy. |
-| `stripOnLink` | boolean | Adds `-s` to `LDFLAGS` and sets `!strip`. No debug package is produced, because makepkg splits debug info during its strip step. |
+The fields are `llvm`, `mold`, `lld`, `lto`, `debug` and `stripOnLink`; see the [config reference](./docs/config-reference.md#configtoolchain) for what each one sets. Note that `stripOnLink` produces no debug package, because makepkg splits debug info during its strip step.
 
 Linker modes (`mold` and `lld`; `true` means `driver`):
 
@@ -192,29 +214,31 @@ Putting `/var/lib/archbuild` on tmpfs also avoids disk I/O, but every worker cop
 
 The PKGBUILD metadata sandbox is not affected: it uses `--volatile=overlay` and never copies its root, whatever the filesystem.
 
-#### GitHub Provider Authentication
-If you heavily use the `github` checker type, fetching data can be throttled. 
+#### GitHub Checker Authentication
 
-Please see the [`.env.example`](./.env.example) file. Copy it to `.env` and provide your `GITHUB_TOKEN` to prevent API rate limiting:
+If you heavily use the `github` checker type, fetching data can be throttled. Put a `GITHUB_TOKEN` into `.env` in the project directory (see [`.env.example`](./.env.example)) to avoid API rate limiting:
 
 ```bash
-cp .env.example .env
+echo 'GITHUB_TOKEN=<your token>' > .env
+chmod 600 .env
 ```
 
 ## Usage
 
-Run the preaur CLI orchestrator:
+Run from the project directory:
 
 ```bash
 # Process all packages defined in the configuration
-bun run src/index.ts
+preaur
 
 # Process only a specific package
-bun run src/index.ts -p some-pkg-bin
+preaur -p some-pkg-bin
 
 # Specify a custom config file
-bun run src/index.ts -c custom.config.yaml
+preaur -c custom.config.yaml
 ```
+
+From a source checkout, use `bun run start` (for example `bun run start -p some-pkg-bin`).
 
 *Built packages and databases will be deposited in the `./repo/<repo.name>/` directory.*
 
@@ -242,6 +266,20 @@ Defaults:%preaur-build env_keep += "SOURCE_DATE_EPOCH SRCDEST SRCPKGDEST PKGDEST
 
 ```bash
 useradd -m -G preaur-build preaur
+# let the user's systemd timers run without a login session
+loginctl enable-linger preaur
+```
+
+The remaining steps run as the `preaur` user (for example `sudo -iu preaur`), with the project directory at `~/preaur`.
+
+### Set Up AUR Push (optional)
+
+Packages with `push: true` are pushed to the AUR over SSH. Create a key for the `preaur` user, add the public key to your [AUR account](https://aur.archlinux.org/account), and accept the host key once:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/aur -N ''
+printf 'Host aur.archlinux.org\n  User aur\n  IdentityFile ~/.ssh/aur\n' >> ~/.ssh/config
+ssh aur@aur.archlinux.org help
 ```
 
 ### Set Up the Scheduler
@@ -254,7 +292,7 @@ useradd -m -G preaur-build preaur
    ```ini
    [Unit]
    Description=PreAUR Automated Package Builder
-   
+
    [Service]
    Type=simple
    WorkingDirectory=%h/preaur
@@ -267,15 +305,15 @@ useradd -m -G preaur-build preaur
 
    ```ini
    [Unit]
-   Description=Run PreAUR Daily
-   
+   Description=Run PreAUR twice a day
+
    [Timer]
    # daily, 2 a.m.
    OnCalendar=*-*-* 2:00:00
    # daily, 1 p.m.
    OnCalendar=*-*-* 13:00:00
    Persistent=true
-   
+
    [Install]
    WantedBy=timers.target
    ```
@@ -307,7 +345,7 @@ With `removeOld`, when a newly built package replaces a different version of the
 
 ### Packages Removed From the Config
 
-When a package is no longer listed in `packages`, PreAUR always drops its entry from `data/versions.json` and commits that as `versions: remove <pkgname>`. `data/known_packages` and `data/known_maintainers` are kept, so adding the package back keeps its approval and does not rebuild it if its package file still exists.
+When a package is no longer listed in `packages`, PreAUR always drops its entry from `data/versions.json` (with [project git automation](#project-git-automation) active, committed as `versions: remove <pkgname>`). `data/known_packages` and `data/known_maintainers` are kept, so adding the package back keeps its approval and does not rebuild it if its package file still exists.
 
 With `repo.removeOrphans`, PreAUR also cleans the repository before dropping the entry. Every database entry whose `%BASE%` is the package's pkgbase is removed with `repo-remove`, which covers split packages and the `-debug` package, and their package files and `.sig` files are deleted. If `repo-remove` fails, the entry is kept and the cleanup is retried on the next run. Things to know:
 

@@ -178,8 +178,8 @@ GitHub version checker.
 
 | Key | Required | Type | Default | Description |
 | --- | --- | --- | --- | --- |
-| `strip_version` | no | boolean |  | Strip common version prefixes before comparison. |
-| `normalize` | no | boolean |  | Normalize upstream version text. |
+| `strip_version` | no | boolean |  | Keep only the part of the version before the first - or _ (for example, drop a Debian or RPM release). |
+| `normalize` | no | boolean |  | Replace colons, slashes, hyphens and whitespace in the version with underscores. Only applies to the github checker. |
 | `template` | no | string |  | Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest. |
 | `type` | yes | "github" |  | Use GitHub release data. |
 | `repo` | yes | string |  | GitHub repository as owner/name. |
@@ -193,8 +193,8 @@ Debian repository version checker.
 
 | Key | Required | Type | Default | Description |
 | --- | --- | --- | --- | --- |
-| `strip_version` | no | boolean |  | Strip common version prefixes before comparison. |
-| `normalize` | no | boolean |  | Normalize upstream version text. |
+| `strip_version` | no | boolean |  | Keep only the part of the version before the first - or _ (for example, drop a Debian or RPM release). |
+| `normalize` | no | boolean |  | Replace colons, slashes, hyphens and whitespace in the version with underscores. Only applies to the github checker. |
 | `template` | no | string |  | Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest. |
 | `type` | yes | "deb" |  | Use a Debian Packages index. |
 | `url` | yes | string |  | Repository base URL. |
@@ -209,8 +209,8 @@ RPM repository version checker.
 
 | Key | Required | Type | Default | Description |
 | --- | --- | --- | --- | --- |
-| `strip_version` | no | boolean |  | Strip common version prefixes before comparison. |
-| `normalize` | no | boolean |  | Normalize upstream version text. |
+| `strip_version` | no | boolean |  | Keep only the part of the version before the first - or _ (for example, drop a Debian or RPM release). |
+| `normalize` | no | boolean |  | Replace colons, slashes, hyphens and whitespace in the version with underscores. Only applies to the github checker. |
 | `template` | no | string |  | Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest. |
 | `type` | yes | "rpm" |  | Use an RPM repository. |
 | `url` | yes | string |  | Repository base URL. |
@@ -222,8 +222,8 @@ JSON HTTP response version checker.
 
 | Key | Required | Type | Default | Description |
 | --- | --- | --- | --- | --- |
-| `strip_version` | no | boolean |  | Strip common version prefixes before comparison. |
-| `normalize` | no | boolean |  | Normalize upstream version text. |
+| `strip_version` | no | boolean |  | Keep only the part of the version before the first - or _ (for example, drop a Debian or RPM release). |
+| `normalize` | no | boolean |  | Replace colons, slashes, hyphens and whitespace in the version with underscores. Only applies to the github checker. |
 | `template` | no | string |  | Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest. |
 | `type` | yes | "json" |  | Use a JSON HTTP response. |
 | `url` | yes | string |  | URL returning JSON. |

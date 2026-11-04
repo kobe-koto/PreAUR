@@ -112,8 +112,8 @@ const PreaurRuntimeConfigSchema = z.object({
 }).strict().describe('Runtime behavior settings.');
 
 const PreaurCheckerBaseShape = {
-    strip_version: z.boolean().optional().describe('Strip common version prefixes before comparison.'),
-    normalize: z.boolean().optional().describe('Normalize upstream version text.'),
+    strip_version: z.boolean().optional().describe('Keep only the part of the version before the first - or _ (for example, drop a Debian or RPM release).'),
+    normalize: z.boolean().optional().describe('Replace colons, slashes, hyphens and whitespace in the version with underscores. Only applies to the github checker.'),
     template: z.string().optional().describe('Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.'),
 };
 

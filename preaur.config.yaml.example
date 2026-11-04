@@ -1,6 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/kobe-koto/PreAUR/main/preaur.schema.json
 
-# Packager: PreAUR (on behalf of NAME) <EMAIL>
 config:
   # PKGBUILD version parser backend:
   # "native" -> fast built-in parser with bash expansion fallback (default)
@@ -45,12 +44,26 @@ config:
   # trustedAurGitPrefixes:
   #   - "https://aur-mirror.example.org/"
 
+# Packager identities. Builds by a package's maintainer run with
+# PACKAGER="PreAUR (on behalf of <name>) <<email>>".
 maintainers:
   - id: "johndoe"
     name: "John Doe"
     email: "john.doe@example.com"
 
 default_maintainer: "johndoe"
+
+# Project git automation (on by default). If the working directory is a git
+# repository with this remote, PreAUR pulls before each run and commits/pushes
+# changes in data/ afterwards. Skipped with a warning otherwise.
+# git:
+#   enabled: true
+#   remote: "origin"
+#   branch: "main" # default: current branch
+#   sync:
+#     allow_remote_overwrite_local: false # true -> git reset --hard to the remote instead of pull --ff-only
+#   push:
+#     force: false
 
 # Webhook notifications for build progress reporting
 # webhooks:
@@ -106,7 +119,7 @@ default_maintainer: "johndoe"
 #
 # Template variables:
 #   {{pkgname}}, {{version}}, {{pkgver}}, {{pkgrel}}, {{epoch}},
-#   {{maintainer}}, {{reason}}, {{error}}, {{buildTime}}, {{timestamp}}
+#   {{maintainer}}, {{reason}}, {{error}}, {{buildTime}}, {{timestamp}} (ISO 8601 time)
 #   {{_rendered}} - the rendered template message (use in payload to reference templates)
 #
 # Notes:
@@ -121,14 +134,14 @@ resources:
   # "-1" -> uses (total_cores - 1) - default logic if omitted
   # "--all" -> uses all logical cores
   # "4" -> explicitly use 4 cores
-  cpu: "-2" 
+  cpu: "-2"
   parallel: 2
   updateCheckCocurrent: 5 # at least / by default 1, this may cause rate-limiting issues if set too high
 
+# Optional, but without it built packages are not collected and already-built
+# versions are not skipped. Built packages and myrepo.db.tar.gz go to repo/myrepo/.
 repo:
-  # REQUIRED. Defines the local output registry name
-  # Resulting structure inside `repo/myrepo/` will include `myrepo.db.tar.gz` and copied `.pkg.tar.zst` files 
-  name: "myrepo" 
+  name: "myrepo"
 
 packages:
   # packages[].maintainer is optional. If omitted, default_maintainer is used.
@@ -156,12 +169,12 @@ packages:
     push: true # Automatically git commit and push back to AUR on success
     builder: "extra-x86_64-build" # Specific build executable. Can use "pkgctl build" if preferred! Defaults to extra-x86_64-build
     dummy_packages:
-      - dummy: "grub" # this result in a `grub-dummy` pkg provides "grub"
+      - dummy: "grub" # builds a `grub-dummy` package that provides "grub"
         epoch: 2
         pkgver: 2.14
         pkgrel: 1
         files:
-         - /usr/bin/grub # this would be a copy of /dev/null
+          - /usr/bin/grub # created as an empty file
 
   # Git/Dynamic Versioning mapped package
   - pkgname: "grub-theme-lobo-git"
@@ -170,13 +183,13 @@ packages:
     # preaur automatically detects the `pkgver()` bash block
     # and invokes `makepkg -odc` to pull the latest commits and dynamically set the package version.
     dummy_packages:
-      - dummy: "grub" # this result in a `grub-dummy` pkg provides "grub"
+      - dummy: "grub" # builds a `grub-dummy` package that provides "grub"
         epoch: 2
         pkgver: 2.14
         pkgrel: 1
         files:
-         - /usr/bin/grub # this would be a copy of /dev/null
-    repo_packages: # packages that in this repo, and should be installed before build this package
+          - /usr/bin/grub # created as an empty file
+    repo_packages: # packages built into this repo that are installed before building this one
       - grub-theme-lain
     # Per-package toolchain overrides replace config.toolchain field by field.
     # toolchain:
@@ -187,7 +200,7 @@ packages:
     maintainer: "johndoe"
     checker:
       type: "deb"
-      strip_version: true # no pkgrel will be passed
+      strip_version: true # keep only the part before the first "-" or "_" (drops the Debian/RPM release)
       url: "https://packages.microsoft.com/repos/vscode"
       dist: "stable"
       component: "main"
@@ -199,7 +212,7 @@ packages:
     maintainer: "johndoe"
     checker:
       type: "rpm"
-      strip_version: true # no pkgrel will be passed
+      strip_version: true # keep only the part before the first "-" or "_" (drops the Debian/RPM release)
       url: "https://packages.microsoft.com/yumrepos/vscode"
       pkg: "code"
 
@@ -212,20 +225,23 @@ packages:
       params:
         code: "CL"
         release.type: "release"
-        _: "{{timestamp}}" # {{timestamp}} = milliseconds, {{random=N}} = N random [A-Za-z0-9] characters; regenerated per request
+        # Cache buster. In params, {{timestamp}} is milliseconds since the epoch
+        # (unlike the ISO time in webhook templates); {{random=N}} gives N random
+        # [A-Za-z0-9] characters. Both are regenerated on every request.
+        _: "{{timestamp}}"
       # JSONPath (jsonpath-plus); filters such as [?(@.type=="release")] are supported
       path: "$[0].releases[*].version"
       sort_by: "version" # newest by version comparison (default); "none" takes the first match
 
-  - pkgname: spotify
-    maintainer: johndoe
+  # Template example: maps a version such as 1.2.3.4.abcdef to pkgver=1.2.3.4 and _commit=abcdef
+  - pkgname: "spotify"
+    maintainer: "johndoe"
     checker:
-      type: deb  
-      strip_version: false
+      type: "deb"
       # template also filters: versions it cannot parse are ignored when picking the latest
-      template: '{~pkgver}.{~pkgver}.{~pkgver}.{~pkgver}.{_commit}'
-      url: 'https://repository.spotify.com'
-      dist: testing 
-      component: non-free
-      arch: amd64
-      pkg: spotify-client
+      template: "{~pkgver}.{~pkgver}.{~pkgver}.{~pkgver}.{_commit}"
+      url: "https://repository.spotify.com"
+      dist: "testing"
+      component: "non-free"
+      arch: "amd64"
+      pkg: "spotify-client"

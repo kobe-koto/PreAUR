@@ -272,10 +272,10 @@ packages[].checker: github
 GitHub version checker.
 .TP
 .B strip_version
-Type: boolean. Required: no. Strip common version prefixes before comparison.
+Type: boolean. Required: no. Keep only the part of the version before the first \- or _ (for example, drop a Debian or RPM release).
 .TP
 .B normalize
-Type: boolean. Required: no. Normalize upstream version text.
+Type: boolean. Required: no. Replace colons, slashes, hyphens and whitespace in the version with underscores. Only applies to the github checker.
 .TP
 .B template
 Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.
@@ -299,10 +299,10 @@ packages[].checker: deb
 Debian repository version checker.
 .TP
 .B strip_version
-Type: boolean. Required: no. Strip common version prefixes before comparison.
+Type: boolean. Required: no. Keep only the part of the version before the first \- or _ (for example, drop a Debian or RPM release).
 .TP
 .B normalize
-Type: boolean. Required: no. Normalize upstream version text.
+Type: boolean. Required: no. Replace colons, slashes, hyphens and whitespace in the version with underscores. Only applies to the github checker.
 .TP
 .B template
 Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.
@@ -329,10 +329,10 @@ packages[].checker: rpm
 RPM repository version checker.
 .TP
 .B strip_version
-Type: boolean. Required: no. Strip common version prefixes before comparison.
+Type: boolean. Required: no. Keep only the part of the version before the first \- or _ (for example, drop a Debian or RPM release).
 .TP
 .B normalize
-Type: boolean. Required: no. Normalize upstream version text.
+Type: boolean. Required: no. Replace colons, slashes, hyphens and whitespace in the version with underscores. Only applies to the github checker.
 .TP
 .B template
 Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.
@@ -350,10 +350,10 @@ packages[].checker: json
 JSON HTTP response version checker.
 .TP
 .B strip_version
-Type: boolean. Required: no. Strip common version prefixes before comparison.
+Type: boolean. Required: no. Keep only the part of the version before the first \- or _ (for example, drop a Debian or RPM release).
 .TP
 .B normalize
-Type: boolean. Required: no. Normalize upstream version text.
+Type: boolean. Required: no. Replace colons, slashes, hyphens and whitespace in the version with underscores. Only applies to the github checker.
 .TP
 .B template
 Type: string. Required: no. Template mapping upstream version text to PKGBUILD variables. Versions that do not match the template are ignored when picking the latest.

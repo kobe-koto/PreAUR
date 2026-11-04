@@ -8,12 +8,12 @@
 
 ## 功能
 
-- **自动更新**：通过上游来源（如 GitHub release）或动态 `pkgver()` 函数检查新版本，并自动更新 `PKGBUILD`。
+- **自动更新**：通过上游 checker（GitHub release、Debian/APT 与 RPM 仓库，或任意 JSON HTTP API）或动态 `pkgver()` 函数检查新版本，并自动更新 `PKGBUILD`。
 - **Git 同步**：把 AUR 仓库克隆到 `./pkgbuilds/`，可选通过 SSH 把更新提交并推送回 AUR。
-- **干净的 chroot 构建**：交给 `devtools`（如 `extra-x86_64-build` 或 `pkgctl build`）安全地构建软件包，并根据 CPU 配置自动分配 `$MAKEFLAGS`。
-- **本地仓库**：自动收集构建出的 `.pkg.tar.zst`，并在 `./repo/` 中维护本地 pacman 数据库（`repo-add`）。
-- **智能缓存**：识别已经构建过的相同版本/pkgrel，避免重复编译。
-  对于没有 `checker`、且 PKGBUILD 版本为静态（没有 `pkgver()`，顶层也没有命令替换、`eval` 或 `source`）的包，PreAUR 会把包仓库的 git commit 记录到 `data/versions.json`（`version_marker`）。只要 commit、git 地址、解析器和 builder 都没变，后续运行会直接沿用已存版本，跳过 PKGBUILD 沙箱命令。
+- **干净的 chroot 构建**：交给 `devtools`（如 `extra-x86_64-build` 或 `pkgctl build`）安全地构建软件包，并根据 `resources.cpu` 设置 `$MAKEFLAGS`。
+- **本地仓库**：自动收集构建出的 `.pkg.tar.zst`，并在 `./repo/<repo.name>/` 中维护本地 pacman 数据库（`repo-add`）。
+- **智能缓存**：跳过已经构建过相同版本/pkgrel 的包；静态 PKGBUILD 的 git commit 没变时，也不再重新解析。
+- **所有权审批**：只构建经你批准的软件包和 AUR 维护者，所有权变化时会要求重新批准。
 
 ## 快速开始
 
@@ -26,21 +26,55 @@ paru -S preaur-git # 推荐，因为我喜欢它
 paru -S preaur-bin
 ```
 
+两者都会提供 `/usr/bin/preaur`、man 手册 `preaur(1)` 和 `preaur-config(5)`，以及配置 schema。
+
+从源码运行（需要 [Bun](https://bun.sh)）：
+
+```bash
+git clone https://github.com/kobe-koto/PreAUR.git && cd PreAUR
+bun install
+bun run start   # 等同于 `preaur`
+```
+
 ### 配置
 
-PreAUR 需要一个配置文件才能运行。
+PreAUR 以当前目录作为项目目录：从这里读取 `preaur.config.yaml` 和 `.env`，状态（`data/`）、AUR 仓库副本（`pkgbuilds/`）、构建文件（`work/`）、日志（`logs/`）和本地仓库（`repo/`）也都放在这里。请创建一个专用目录，并始终在其中运行 `preaur`：
 
-完整的示例配置请见 [`preaur.config.yaml.example`](./preaur.config.yaml.example)。也可以在文件开头加上这一行来使用配置 schema：
+```bash
+mkdir ~/preaur && cd ~/preaur
+curl -o preaur.config.yaml https://raw.githubusercontent.com/kobe-koto/PreAUR/main/preaur.config.yaml.example
+```
+
+[`preaur.config.yaml.example`](./preaur.config.yaml.example) 是带注释的示例。所有选项见 [docs/config-reference.md](./docs/config-reference.md)（也可以 `man 5 preaur-config`）。示例的第一行通过配置 schema 为编辑器提供补全和校验：
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/kobe-koto/PreAUR/main/preaur.schema.json
 ```
 
-运行 CLI 之前，先把它复制为 `preaur.config.yaml`：
+#### 首次运行：批准软件包和维护者
 
-```bash
-cp preaur.config.yaml.example preaur.config.yaml
+PreAUR 只构建经你批准、且由经你批准的 AUR 维护者维护的软件包。每次运行时，它会把每个配置的软件包记录到 `data/known_packages`，把它的 AUR 维护者和共同维护者记录到 `data/known_maintainers`。新条目带有 `!!!` 前缀，表示未批准：
+
+```text
+# data/known_packages
+!!! visual-studio-code-bin # Maintainer: some-aur-user
+
+# data/known_maintainers
+!!! some-aur-user # Maintaining: visual-studio-code-bin
 ```
+
+只要还有未批准的条目，运行就会在构建前以 `Unapproved AUR ownership entries found` 停止。首次运行时这是正常的。检查这些条目，把信任的条目前的 `!!! ` 删掉，再运行一次即可。
+
+当软件包的 AUR 维护者发生变化，或者来源改成自定义 `git` 地址时，它会再次被标记为未批准。
+
+#### 项目 Git 自动化
+
+如果项目目录是一个配置了对应 remote（默认 `origin`）的 git 仓库，PreAUR 会让 `data/` 与远端保持同步。该功能默认开启（`git.enabled: true`）：
+
+- 每次运行前先 fetch，再执行 `git pull --ff-only`。设置 `git.sync.allow_remote_overwrite_local: true` 时改为执行 `git reset --hard <remote>/<branch>`，会丢弃本地改动。
+- 运行过程中把 `data/` 的变化（版本、批准列表）提交，结束时推送（`git.push.force` 会加上 `--force`）。
+
+如果目录不是 git 仓库或 remote 不存在，会打印警告并跳过。设置 `git.enabled: false` 可关闭。
 
 #### Chroot Pacman 仓库
 
@@ -59,8 +93,10 @@ config:
         include:
           - ./pacman-myrepo.conf
         lines:
-          - "Server = file:///home/preaur/repo/$arch"
+          - "Server = https://repo.example.org/$repo/os/$arch"
 ```
+
+只有生成的 pacman.conf 会被绑定进 chroot，所以 `Server` 必须能在 chroot 内访问（例如 http(s) 地址），宿主机上的 `file://` 路径在 chroot 里是看不到的。要安装 PreAUR 自己构建的包，请使用软件包的 `repo_packages`。
 
 配置了 `chrootPacman` 时，PreAUR 还会让 `makechrootpkg` 更新工作用的 chroot 副本，确保在安装依赖之前同步好自定义仓库的数据库。
 
@@ -76,24 +112,17 @@ PreAUR 默认在软件包构建开始前，把 PKGBUILD 的元数据命令放进
 
 元数据命令本身从不安装软件包。在 `ephemeral: true`（默认）下，每条命令都通过 `systemd-nspawn --volatile=overlay` 运行：root 以只读方式挂载，上面盖一层 tmpfs overlay，所以不会复制任何东西，命令退出后所有改动都会丢弃，在任何文件系统上都是如此。命令执行时会对 root 的锁文件持有共享 `flock`，更新 root 时持有排他锁，因此 root 不会在命令运行中途被修改，多个 PreAUR 进程并发时也一样。在 `ephemeral: false` 下，命令直接在 root 上运行，并且串行执行。
 
-由于 PreAUR 会往这个 root 里安装工具，它不能是 devtools 的构建 chroot，位于 `/var/lib/archbuild` 下的 root 会被拒绝。可以这样显式指定：
+由于 PreAUR 会往这个 root 里安装工具，它不能是 devtools 的构建 chroot，位于 `/var/lib/archbuild` 下的 root 会被拒绝。如需使用其他 root 或安装额外工具：
 
 ```yaml
 config:
   pkgbuildSandbox:
-    enabled: true
-    root: /var/lib/preaur/metadata/extra-x86_64
-    command: systemd-nspawn
-    sudo: true
-    user: preaur
-    network: true
-    ephemeral: true
-    initRoot: true
+    root: /srv/preaur/metadata/extra-x86_64
     packages:
       - nodejs
 ```
 
-如果定时运行时使用免密 sudo，除了构建封装脚本，还需要放行沙箱命令和 `mkarchroot`。
+`pkgbuildSandbox` 的其他选项见[配置参考](./docs/config-reference.md)。定时运行的设置见[免密 sudo](#为-preaur-build-用户组配置免密-sudo)。
 
 单个软件包也可以要求在 chroot 里做构建前准备。`pre-build-packages` 会在构建开始前安装，`pre-build-scripts` 会在构建开始前以 root 身份在 chroot 中运行：
 
@@ -128,14 +157,7 @@ packages:
       lto: default        # LTO 也回到 makepkg 的默认策略
 ```
 
-| 字段 | 取值 | 效果 |
-|---|---|---|
-| `llvm` | boolean | `CC=clang`、`CXX=clang++`、`AR=llvm-ar`、`RANLIB=llvm-ranlib`、`NM=llvm-nm`，makepkg 用 `llvm-strip` 做 strip。除非设置了 `lld: false` 或 `mold`，否则以 `driver` 模式用 LLD 链接。会安装 `clang` 和 `llvm`。 |
-| `mold` | `true`、`driver`、`replace`、`false` | 用 mold 链接（见下方链接器模式）。会安装 `mold`。 |
-| `lld` | `true`、`driver`、`replace`、`false` | 用 LLD 链接（见下方链接器模式）。`false` 会关掉 `llvm` 默认附带的 LLD，改用 GNU ld 链接。会安装 `lld`。 |
-| `lto` | `default`、`off`、`thin`、`full` | `default` 保持 makepkg 的默认策略。`off` 设置 `!lto` 并移除继承来的 `-flto*` 参数。`thin` 使用 `-flto=thin`，要求 `llvm: true`。`full` 在 LLVM 下使用 `-flto=full`，在 GCC 下使用 `-flto=auto` 并配合 `gcc-ar`/`gcc-ranlib`/`gcc-nm`。 |
-| `debug` | boolean | `false` 把 `OPTIONS` 中的 `debug` 换成 `!debug`；`true` 强制开启 `debug`。不设置则保持 chroot 的默认策略。 |
-| `stripOnLink` | boolean | 在 `LDFLAGS` 中加入 `-s` 并设置 `!strip`。不会生成 debug 包，因为 makepkg 是在 strip 步骤中拆分调试信息的。 |
+可用字段为 `llvm`、`mold`、`lld`、`lto`、`debug` 和 `stripOnLink`，各自的具体作用见[配置参考](./docs/config-reference.md#configtoolchain)。注意 `stripOnLink` 不会生成 debug 包，因为 makepkg 是在 strip 步骤中拆分调试信息的。
 
 链接器模式（适用于 `mold` 和 `lld`；`true` 等同于 `driver`）：
 
@@ -192,30 +214,31 @@ mount -o loop,compress=zstd /var/lib/archbuild.img /var/lib/archbuild
 
 PKGBUILD 元数据沙箱不受影响：它使用 `--volatile=overlay`，无论什么文件系统都不会复制 root。
 
-#### GitHub 来源的认证
+#### GitHub checker 的认证
 
-如果大量使用 `github` 类型的 checker，获取数据可能会被限流。
-
-请参考 [`.env.example`](./.env.example)。把它复制为 `.env` 并填入 `GITHUB_TOKEN`，以避免 API 限流：
+如果大量使用 `github` 类型的 checker，获取数据可能会被限流。在项目目录的 `.env` 中写入 `GITHUB_TOKEN`（参考 [`.env.example`](./.env.example)）即可避免 API 限流：
 
 ```bash
-cp .env.example .env
+echo 'GITHUB_TOKEN=<your token>' > .env
+chmod 600 .env
 ```
 
 ## 使用
 
-运行 PreAUR CLI：
+在项目目录中运行：
 
 ```bash
 # 处理配置中的所有软件包
-bun run src/index.ts
+preaur
 
 # 只处理指定的软件包
-bun run src/index.ts -p some-pkg-bin
+preaur -p some-pkg-bin
 
 # 指定自定义配置文件
-bun run src/index.ts -c custom.config.yaml
+preaur -c custom.config.yaml
 ```
+
+从源码运行时使用 `bun run start`（例如 `bun run start -p some-pkg-bin`）。
 
 *构建出的软件包和数据库会放在 `./repo/<repo.name>/` 目录中。*
 
@@ -243,6 +266,20 @@ Defaults:%preaur-build env_keep += "SOURCE_DATE_EPOCH SRCDEST SRCPKGDEST PKGDEST
 
 ```bash
 useradd -m -G preaur-build preaur
+# 让该用户的 systemd timer 在没有登录会话时也能运行
+loginctl enable-linger preaur
+```
+
+后续步骤都以 `preaur` 用户身份执行（例如 `sudo -iu preaur`），项目目录为 `~/preaur`。
+
+### 配置 AUR 推送（可选）
+
+设置了 `push: true` 的软件包会通过 SSH 推送到 AUR。为 `preaur` 用户生成密钥，把公钥添加到你的 [AUR 账户](https://aur.archlinux.org/account)，并首次连接一次以接受主机密钥：
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/aur -N ''
+printf 'Host aur.archlinux.org\n  User aur\n  IdentityFile ~/.ssh/aur\n' >> ~/.ssh/config
+ssh aur@aur.archlinux.org help
 ```
 
 ### 配置定时任务
@@ -255,7 +292,7 @@ useradd -m -G preaur-build preaur
    ```ini
    [Unit]
    Description=PreAUR Automated Package Builder
-   
+
    [Service]
    Type=simple
    WorkingDirectory=%h/preaur
@@ -268,15 +305,15 @@ useradd -m -G preaur-build preaur
 
    ```ini
    [Unit]
-   Description=Run PreAUR Daily
-   
+   Description=Run PreAUR twice a day
+
    [Timer]
    # 每天凌晨 2 点
    OnCalendar=*-*-* 2:00:00
    # 每天下午 1 点
    OnCalendar=*-*-* 13:00:00
    Persistent=true
-   
+
    [Install]
    WantedBy=timers.target
    ```
@@ -308,7 +345,7 @@ repo:
 
 ### 从配置中移除的包
 
-某个包不再出现在 `packages` 中时，PreAUR 总会从 `data/versions.json` 删除它的条目，并提交为 `versions: remove <pkgname>`。`data/known_packages` 和 `data/known_maintainers` 会保留，所以把包重新加回来时批准状态不变，如果包文件还在也不会重新构建。
+某个包不再出现在 `packages` 中时，PreAUR 总会从 `data/versions.json` 删除它的条目（启用[项目 Git 自动化](#项目-git-自动化)时提交为 `versions: remove <pkgname>`）。`data/known_packages` 和 `data/known_maintainers` 会保留，所以把包重新加回来时批准状态不变，如果包文件还在也不会重新构建。
 
 开启 `repo.removeOrphans` 后，PreAUR 会在删除条目之前先清理仓库：数据库中 `%BASE%` 等于该包 pkgbase 的所有条目都会通过 `repo-remove` 移除（包括拆分包和 `-debug` 包），并删除对应的包文件和 `.sig`。如果 `repo-remove` 失败，条目会保留，下次运行时重试。注意：
 
