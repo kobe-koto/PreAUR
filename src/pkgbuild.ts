@@ -3,9 +3,9 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import pc from 'picocolors';
-import type { PacmanVersion } from './pacman_version';
-import { constructMessager } from './logger';
-import { shellEnvCommand, shellQuote, type EnvPairs } from './env';
+import type { PacmanVersion } from './pacman_version.ts';
+import { constructMessager } from './logger.ts';
+import { shellEnvCommand, shellQuote, type EnvPairs } from './env.ts';
 
 const execAsync = promisify(exec);
 

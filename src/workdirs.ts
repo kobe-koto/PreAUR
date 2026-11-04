@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { EnvPair } from './env';
+import type { EnvPair } from './env.ts';
 
 export interface PackageWorkDirs {
     root: string;

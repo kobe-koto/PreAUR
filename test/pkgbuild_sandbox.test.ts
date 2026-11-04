@@ -13,8 +13,8 @@ import {
     resolveMetadataRootLockFile,
     resolvePkgbuildSandboxOptions,
     type ResolvedPkgbuildSandboxOptions,
-} from '../src/pkgbuild_sandbox';
-import type { PackageWorkDirs } from '../src/workdirs';
+} from '../src/pkgbuild_sandbox.ts';
+import type { PackageWorkDirs } from '../src/workdirs.ts';
 
 const tmpDirs: string[] = [];
 

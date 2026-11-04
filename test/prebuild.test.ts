@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { packagePreBuildConfig, renderPreBuildInstall, renderPreBuildPkgbuild } from '../src/prebuild';
+import { packagePreBuildConfig, renderPreBuildInstall, renderPreBuildPkgbuild } from '../src/prebuild.ts';
 
 describe('packagePreBuildConfig', () => {
     test('collects kebab-case and snake_case package-level pre-build settings', () => {

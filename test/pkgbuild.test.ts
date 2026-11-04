@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { isStaticVersionPkgbuild, parseLiteralPkgbase, parsePkgBuild, parseSrcInfoPkgbase } from '../src/pkgbuild';
+import { isStaticVersionPkgbuild, parseLiteralPkgbase, parsePkgBuild, parseSrcInfoPkgbase } from '../src/pkgbuild.ts';
 
 const tmpDirs: string[] = [];
 

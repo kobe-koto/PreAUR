@@ -2,11 +2,11 @@ import simpleGit, { type SimpleGit } from 'simple-git';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-import type { PreaurProjectGitConfig, PreaurProjectGitPushConfig, PreaurProjectGitSyncConfig } from './config';
-import { constructMessager } from './logger';
-import { formatPacmanVersion, hasPacmanVersion } from './pacman_version';
-import type { VersionInfo } from './version_store';
-import type { VersionStore } from './version_store';
+import type { PreaurProjectGitConfig, PreaurProjectGitPushConfig, PreaurProjectGitSyncConfig } from './config.ts';
+import { constructMessager } from './logger.ts';
+import { formatPacmanVersion, hasPacmanVersion } from './pacman_version.ts';
+import type { VersionInfo } from './version_store.ts';
+import type { VersionStore } from './version_store.ts';
 
 const ProjectGitMessager = constructMessager('Project Git');
 
@@ -51,12 +51,17 @@ export class ProjectGitManager {
     private commitCount = 0;
     private queue: Promise<void> = Promise.resolve();
 
-    constructor(
-        private readonly baseDir: string,
-        private readonly git: SimpleGit,
-        private readonly config: ResolvedProjectGitConfig,
-        private readonly branch: string
-    ) {}
+    private readonly baseDir: string;
+    private readonly git: SimpleGit;
+    private readonly config: ResolvedProjectGitConfig;
+    private readonly branch: string;
+
+    constructor(baseDir: string, git: SimpleGit, config: ResolvedProjectGitConfig, branch: string) {
+        this.baseDir = baseDir;
+        this.git = git;
+        this.config = config;
+        this.branch = branch;
+    }
 
     static async create(baseDir: string, config: PreaurProjectGitConfig | undefined): Promise<ProjectGitManager | undefined> {
         const resolvedConfig = resolveProjectGitConfig(config);

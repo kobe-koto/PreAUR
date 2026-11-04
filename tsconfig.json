@@ -1,7 +1,8 @@
 {
     "compilerOptions": {
+        // src/ must stay Node-compatible: only Node types here. Tests get Bun
+        // types from test/tsconfig.json.
         "types": [
-            "bun",
             "node"
         ],
         // Environment setup & latest features
@@ -17,6 +18,8 @@
         "moduleResolution": "bundler",
         "allowImportingTsExtensions": true,
         "verbatimModuleSyntax": true,
+        // Only syntax that type stripping can remove, so Node can run src/ directly.
+        "erasableSyntaxOnly": true,
         "noEmit": true,
         // Best practices
         "strict": true,
@@ -31,7 +34,6 @@
     },
     "include": [
         "src/**/*.ts",
-        "test/**/*.ts",
         "build.ts"
     ],
     "exclude": [

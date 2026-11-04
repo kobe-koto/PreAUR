@@ -4,8 +4,8 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { ProjectGitManager, readProjectDataSnapshot, saveVersionStoreUpdate } from '../src/project_git';
-import { VersionStore } from '../src/version_store';
+import { ProjectGitManager, readProjectDataSnapshot, saveVersionStoreUpdate } from '../src/project_git.ts';
+import { VersionStore } from '../src/version_store.ts';
 
 const tmpDirs: string[] = [];
 

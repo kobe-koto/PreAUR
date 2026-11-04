@@ -2,10 +2,10 @@ import { spawn } from 'node:child_process';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as fs from 'node:fs';
-import type { PreaurChrootPacmanConfig, PreaurResources } from './config';
-import { envAssignments, filterEnvPairs, mergeEnvPairs, type EnvPair, type EnvPairs } from './env';
-import { hasChrootPacmanConfig, writeChrootPacmanConfig } from './chroot_pacman';
-import { TOOLCHAIN_DROPIN_CHROOT_PATH } from './toolchain';
+import type { PreaurChrootPacmanConfig, PreaurResources } from './config.ts';
+import { envAssignments, filterEnvPairs, mergeEnvPairs, type EnvPair, type EnvPairs } from './env.ts';
+import { hasChrootPacmanConfig, writeChrootPacmanConfig } from './chroot_pacman.ts';
+import { TOOLCHAIN_DROPIN_CHROOT_PATH } from './toolchain.ts';
 
 const DEVTOOLS_IGNORED_ENV_KEYS = new Set([
     'BUILDDIR',

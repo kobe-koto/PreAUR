@@ -1,6 +1,6 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
-import { findInvalidPlaceholder, RANDOM_PLACEHOLDER_MAX } from './http';
+import { findInvalidPlaceholder, RANDOM_PLACEHOLDER_MAX } from './http.ts';
 
 const stringList = (description: string) => z.array(z.string()).describe(description);
 

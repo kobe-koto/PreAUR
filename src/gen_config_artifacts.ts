@@ -1,8 +1,8 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { z } from 'zod';
+import * as z from 'zod';
 
-import { PreaurRawConfigSchema } from './config_schema';
+import { PreaurRawConfigSchema } from './config_schema.ts';
 
 type JsonSchema = Record<string, any>;
 
@@ -21,7 +21,7 @@ interface ConfigReferenceRow {
     description: string;
 }
 
-const rootDir = path.resolve(import.meta.dir, '..');
+const rootDir = path.resolve(import.meta.dirname, '..');
 const schemaPath = path.resolve(rootDir, 'preaur.schema.json');
 const docsPath = path.resolve(rootDir, 'docs', 'config-reference.md');
 const manDir = path.resolve(rootDir, 'docs', 'man');

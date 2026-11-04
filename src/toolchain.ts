@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-import type { PreaurToolchainConfig } from './config_schema';
+import type { PreaurToolchainConfig } from './config_schema.ts';
 
 /** Path inside the devtools chroot where the generated drop-in is mounted. */
 export const TOOLCHAIN_DROPIN_CHROOT_PATH = '/etc/makepkg.conf.d/zz-preaur-toolchain.conf';

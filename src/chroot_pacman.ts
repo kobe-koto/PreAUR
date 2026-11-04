@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { PreaurChrootPacmanConfig, PreaurChrootPacmanRepository } from './config';
+import type { PreaurChrootPacmanConfig, PreaurChrootPacmanRepository } from './config.ts';
 
 export const DEVTOOLS_DIR = '/usr/share/devtools';
 

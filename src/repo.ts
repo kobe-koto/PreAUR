@@ -3,10 +3,10 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import { gunzipSync } from 'node:zlib';
-import type { PreaurRepo } from './config';
-import type { PacmanVersion } from './pacman_version';
-import { packageArtifactPrefix } from './pacman_version';
-import { Semaphore } from './semaphore';
+import type { PreaurRepo } from './config.ts';
+import type { PacmanVersion } from './pacman_version.ts';
+import { packageArtifactPrefix } from './pacman_version.ts';
+import { Semaphore } from './semaphore.ts';
 
 const PACKAGE_ARTIFACT_EXT = '.pkg.tar.zst';
 

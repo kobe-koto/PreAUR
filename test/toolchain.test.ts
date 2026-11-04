@@ -15,7 +15,7 @@ import {
     validateToolchain,
     writeToolchainDropIn,
     type ResolvedToolchain,
-} from '../src/toolchain';
+} from '../src/toolchain.ts';
 
 const tmpDirs: string[] = [];
 

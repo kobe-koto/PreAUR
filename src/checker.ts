@@ -1,9 +1,9 @@
 import * as zlib from 'node:zlib';
 import { promisify } from 'node:util';
 import { JSONPath } from 'jsonpath-plus';
-import type { PreaurChecker, PreaurDebChecker, PreaurGitHubChecker, PreaurJsonChecker, PreaurRpmChecker } from './config';
-import { constructMessager } from './logger';
-import { HttpError, http, renderParamPlaceholders } from './http';
+import type { PreaurChecker, PreaurDebChecker, PreaurGitHubChecker, PreaurJsonChecker, PreaurRpmChecker } from './config.ts';
+import { constructMessager } from './logger.ts';
+import { HttpError, http, renderParamPlaceholders } from './http.ts';
 
 const gunzip = promisify(zlib.gunzip);
 const UpdateCheckerMessager = constructMessager('Update Checker');

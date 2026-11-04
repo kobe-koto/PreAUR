@@ -4,7 +4,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { PreaurPackage } from './config';
+import type { PreaurPackage } from './config.ts';
 
 const execAsync = promisify(exec);
 

@@ -4,12 +4,12 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import type { PreaurPkgbuildSandboxConfig } from './config';
-import { envAssignments, shellQuote, type EnvPair, type EnvPairs } from './env';
-import { PKGBASE_SHELL_EXPR, normalizePkgbase, parseSrcInfoPkgbase, updatePkgBuildWithOps, withPkgbase, type PkgBuildData, type PkgBuildParser } from './pkgbuild';
-import { DEVTOOLS_DIR, resolveBasePacmanConfig, resolveDevtoolsBuildTarget } from './chroot_pacman';
-import type { PackageWorkDirs } from './workdirs';
-import { constructMessager } from './logger';
+import type { PreaurPkgbuildSandboxConfig } from './config.ts';
+import { envAssignments, shellQuote, type EnvPair, type EnvPairs } from './env.ts';
+import { PKGBASE_SHELL_EXPR, normalizePkgbase, parseSrcInfoPkgbase, updatePkgBuildWithOps, withPkgbase, type PkgBuildData, type PkgBuildParser } from './pkgbuild.ts';
+import { DEVTOOLS_DIR, resolveBasePacmanConfig, resolveDevtoolsBuildTarget } from './chroot_pacman.ts';
+import type { PackageWorkDirs } from './workdirs.ts';
+import { constructMessager } from './logger.ts';
 
 const SANDBOX_PKG_DIR = '/mnt/preaur-pkg';
 const DEFAULT_SANDBOX_COMMAND = 'systemd-nspawn';

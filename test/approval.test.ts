@@ -3,9 +3,9 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { resolvePackageSource, runApprovalCheck, type AurMetadataFetcher } from '../src/approval';
-import type { PreaurPackage } from '../src/config';
-import { VersionStore } from '../src/version_store';
+import { resolvePackageSource, runApprovalCheck, type AurMetadataFetcher } from '../src/approval.ts';
+import type { PreaurPackage } from '../src/config.ts';
+import { VersionStore } from '../src/version_store.ts';
 
 const tmpDirs: string[] = [];
 

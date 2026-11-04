@@ -2,25 +2,25 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { SimpleGit } from 'simple-git';
 
-import type { PreaurPackage, PreaurPkgbuildSandboxConfig, PreaurRepo } from './config';
-import type { EnvPairs } from './env';
-import type { CheckerResult } from './checker';
-import { applyVersionTemplate, fetchLatestVersion } from './checker';
-import { preparePackageDiff, resolveHeadCommit, resolvePackageGitUrl, type GitCloneResult } from './git';
-import { isStaticVersionPkgbuild, parsePkgBuild, updateDynamicPkgver, updatePkgBuild, withPkgbase, type PkgBuildData, type PkgBuildParser } from './pkgbuild';
-import { VersionStore, sameVersionMarker, type VersionMarker } from './version_store';
-import { hasBuiltPackage } from './repo';
-import { ensurePackageCheckWorkDirs, getPackageWorkDirs, packageWorkEnvPairs, type PackageWorkDirs } from './workdirs';
-import { formatPacmanVersion, hasPacmanVersion, pacmanVersionChanged } from './pacman_version';
-import { constructMessager } from './logger';
-import { saveVersionStoreUpdate, type ProjectGitManager } from './project_git';
-import type { WebhookNotifier } from './webhook';
+import type { PreaurPackage, PreaurPkgbuildSandboxConfig, PreaurRepo } from './config.ts';
+import type { EnvPairs } from './env.ts';
+import type { CheckerResult } from './checker.ts';
+import { applyVersionTemplate, fetchLatestVersion } from './checker.ts';
+import { preparePackageDiff, resolveHeadCommit, resolvePackageGitUrl, type GitCloneResult } from './git.ts';
+import { isStaticVersionPkgbuild, parsePkgBuild, updateDynamicPkgver, updatePkgBuild, withPkgbase, type PkgBuildData, type PkgBuildParser } from './pkgbuild.ts';
+import { VersionStore, sameVersionMarker, type VersionMarker } from './version_store.ts';
+import { hasBuiltPackage } from './repo.ts';
+import { ensurePackageCheckWorkDirs, getPackageWorkDirs, packageWorkEnvPairs, type PackageWorkDirs } from './workdirs.ts';
+import { formatPacmanVersion, hasPacmanVersion, pacmanVersionChanged } from './pacman_version.ts';
+import { constructMessager } from './logger.ts';
+import { saveVersionStoreUpdate, type ProjectGitManager } from './project_git.ts';
+import type { WebhookNotifier } from './webhook.ts';
 import {
     parsePkgBuildInSandbox,
     resolvePkgbuildSandboxOptions,
     updateDynamicPkgverInSandbox,
     updatePkgBuildInSandbox,
-} from './pkgbuild_sandbox';
+} from './pkgbuild_sandbox.ts';
 import pc from 'picocolors';
 
 export interface PackageBuildPlan {

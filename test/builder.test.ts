@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import { buildCommandPlan, buildProcessEnvPairs } from '../src/builder';
-import { envAssignments, envPairsToRecord } from '../src/env';
+import { buildCommandPlan, buildProcessEnvPairs } from '../src/builder.ts';
+import { envAssignments, envPairsToRecord } from '../src/env.ts';
 
 describe('buildCommandPlan', () => {
     test('passes devtools options to makechrootpkg without unsupported makepkg config flags', () => {

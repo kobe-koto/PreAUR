@@ -1,6 +1,6 @@
-import { http } from './http';
-import type { PreaurWebhookConfig, PreaurWebhookEventTag } from './config_schema';
-import { constructMessager } from './logger';
+import { http } from './http.ts';
+import type { PreaurWebhookConfig, PreaurWebhookEventTag } from './config_schema.ts';
+import { constructMessager } from './logger.ts';
 
 const WebhookMessager = constructMessager('Webhook');
 
@@ -41,7 +41,11 @@ const DEFAULT_TEMPLATES: Record<PreaurWebhookEventTag, string> = {
 };
 
 export class WebhookNotifier {
-    constructor(private readonly webhooks: PreaurWebhookConfig[]) {}
+    private readonly webhooks: PreaurWebhookConfig[];
+
+    constructor(webhooks: PreaurWebhookConfig[]) {
+        this.webhooks = webhooks;
+    }
 
     async notify(tag: PreaurWebhookEventTag, context: WebhookContext = {}): Promise<void> {
         const timestamp = new Date().toISOString();

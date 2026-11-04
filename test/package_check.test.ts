@@ -3,11 +3,11 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { runPackageVersionCheck, type PackageVersionCheckDeps } from '../src/package_check';
-import type { PreaurPackage } from '../src/config';
-import { envPairsToRecord, type EnvPairs } from '../src/env';
-import { VersionStore } from '../src/version_store';
-import type { WebhookNotifier } from '../src/webhook';
+import { runPackageVersionCheck, type PackageVersionCheckDeps } from '../src/package_check.ts';
+import type { PreaurPackage } from '../src/config.ts';
+import { envPairsToRecord, type EnvPairs } from '../src/env.ts';
+import { VersionStore } from '../src/version_store.ts';
+import type { WebhookNotifier } from '../src/webhook.ts';
 
 const tmpDirs: string[] = [];
 

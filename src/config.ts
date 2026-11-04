@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { load } from 'js-yaml';
 import * as path from 'node:path';
-import { z } from 'zod';
+import * as z from 'zod';
 
 import {
     PreaurRawConfigSchema,
@@ -24,8 +24,8 @@ import {
     type PreaurRpmChecker,
     type PreaurRuntimeConfig,
     type PreaurToolchainConfig,
-} from './config_schema';
-import { resolveValidToolchain } from './toolchain';
+} from './config_schema.ts';
+import { resolveValidToolchain } from './toolchain.ts';
 
 export type {
     PreaurChrootPacmanConfig,

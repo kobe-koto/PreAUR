@@ -1,25 +1,39 @@
 import pc from "picocolors";
-import { readFileSync } from "node:fs";
+import { build } from "esbuild";
+import { readFileSync, statSync } from "node:fs";
 const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf-8"));
 
-const result = await Bun.build({
-    entrypoints: ["./src/index.ts"],
-    outdir: "./dist",
-    target: "bun",
-    sourcemap: "external",
-    minify: true,
-    define: {
-        VERSION: JSON.stringify(`${version}_bundled`),
-    },
-});
+const outfile = "dist/index.js";
 
-if (result.success) {
+try {
+    await build({
+        entryPoints: ["src/index.ts"],
+        outfile,
+        bundle: true,
+        platform: "node",
+        format: "esm",
+        // jsonpath-plus requires Node 22
+        target: "node22",
+        sourcemap: "external",
+        minify: true,
+        logLevel: "warning",
+        // Bundled CommonJS dependencies call require() for Node built-ins,
+        // which ESM output does not provide on its own.
+        banner: {
+            js: 'import { createRequire as __preaurCreateRequire } from "node:module"; const require = __preaurCreateRequire(import.meta.url);',
+        },
+        define: {
+            VERSION: JSON.stringify(`${version}_bundled`),
+        },
+    });
+
     console.log(`${pc.green("Build successful!")} Artifacts:`);
-    result.outputs.map(output => {
-        const readableSize = (output.size / 1024).toFixed(2) + " KiB";
-        console.log(`    ${pc.blue(output.path)} ${pc.gray(readableSize)}`);
-    })
-} else {
-    console.error("Build failed:");
-    console.error(result.logs.map(log => log.message).join("\n"));
+    for (const path of [outfile, `${outfile}.map`]) {
+        const readableSize = (statSync(path).size / 1024).toFixed(2) + " KiB";
+        console.log(`    ${pc.blue(path)} ${pc.gray(readableSize)}`);
+    }
+} catch {
+    // esbuild has already printed the errors.
+    console.error("Build failed.");
+    process.exitCode = 1;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { shellEnvCommand } from '../src/env';
+import { shellEnvCommand } from '../src/env.ts';
 
 describe('shellEnvCommand', () => {
     test('renders explicit env prefix with shell-quoted assignments', () => {

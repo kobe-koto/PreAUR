@@ -1,11 +1,11 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-import type { PreaurPackage } from './config';
-import { VersionStore, type VersionInfo } from './version_store';
-import { constructMessager } from './logger';
-import { http } from './http';
-import type { WebhookNotifier } from './webhook';
+import type { PreaurPackage } from './config.ts';
+import { VersionStore, type VersionInfo } from './version_store.ts';
+import { constructMessager } from './logger.ts';
+import { http } from './http.ts';
+import type { WebhookNotifier } from './webhook.ts';
 
 const UNAPPROVED_PREFIX = '!!!';
 const BUILTIN_TRUSTED_AUR_GIT_PREFIXES = [
@@ -34,7 +34,11 @@ interface PackageSource {
 export class KnownListStore {
     private entries = new Map<string, boolean>();
 
-    constructor(private readonly filePath: string) {}
+    private readonly filePath: string;
+
+    constructor(filePath: string) {
+        this.filePath = filePath;
+    }
 
     async load(): Promise<void> {
         this.entries.clear();

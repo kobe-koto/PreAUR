@@ -1,7 +1,7 @@
 import simpleGit, { type SimpleGit } from 'simple-git';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { constructMessager } from './logger';
+import { constructMessager } from './logger.ts';
 
 export interface GitCloneResult {
     path: string;

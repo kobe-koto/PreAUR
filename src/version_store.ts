@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { PartialPacmanVersion } from './pacman_version';
+import type { PartialPacmanVersion } from './pacman_version.ts';
 
 /**
  * Inputs that fully determine the version of a package without a checker

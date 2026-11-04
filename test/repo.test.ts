@@ -18,7 +18,7 @@ import {
     withRepoLock,
     type RepoCleanupProtection,
     type RepoDbEntry,
-} from '../src/repo';
+} from '../src/repo.ts';
 import { gzipSync } from 'node:zlib';
 
 const tmpDirs: string[] = [];

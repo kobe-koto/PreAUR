@@ -1,6 +1,6 @@
 import { test, expect, describe } from 'bun:test';
 
-import { applyVersionTemplate } from '../src/checker';
+import { applyVersionTemplate } from '../src/checker.ts';
 
 describe('applyVersionTemplate', () => {
     // The spotify-style template from preaur.config.yaml.example: the same
@@ -24,10 +24,10 @@ describe('applyVersionTemplate', () => {
 });
 
 import { afterEach, spyOn } from 'bun:test';
-import { http } from '../src/http';
+import { http } from '../src/http.ts';
 import { gzipSync } from 'node:zlib';
-import { DebProvider, GitHubProvider, selectLatestCandidate, transformGitHubTag } from '../src/checker';
-import type { PreaurGitHubChecker, PreaurDebChecker } from '../src/config';
+import { DebProvider, GitHubProvider, selectLatestCandidate, transformGitHubTag } from '../src/checker.ts';
+import type { PreaurGitHubChecker, PreaurDebChecker } from '../src/config.ts';
 
 const gh = (extra: Partial<PreaurGitHubChecker> = {}): PreaurGitHubChecker => ({
     type: 'github',
@@ -164,10 +164,10 @@ describe('DebProvider over HTTP', () => {
     });
 });
 
-import { JsonProvider, selectJsonVersions } from '../src/checker';
-import { renderParamPlaceholders } from '../src/http';
-import { PreaurRawConfigSchema } from '../src/config_schema';
-import type { PreaurJsonChecker } from '../src/config';
+import { JsonProvider, selectJsonVersions } from '../src/checker.ts';
+import { renderParamPlaceholders } from '../src/http.ts';
+import { PreaurRawConfigSchema } from '../src/config_schema.ts';
+import type { PreaurJsonChecker } from '../src/config.ts';
 
 describe('renderParamPlaceholders', () => {
     test('fills {{timestamp}} and {{random=N}} and leaves other values alone', () => {

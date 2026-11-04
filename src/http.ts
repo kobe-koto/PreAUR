@@ -1,8 +1,13 @@
 /** Thrown for non-2xx responses; the message matches the one axios used. */
 export class HttpError extends Error {
-    constructor(readonly status: number, readonly url: string) {
+    readonly status: number;
+    readonly url: string;
+
+    constructor(status: number, url: string) {
         super(`Request failed with status code ${status}`);
         this.name = 'HttpError';
+        this.status = status;
+        this.url = url;
     }
 }
 

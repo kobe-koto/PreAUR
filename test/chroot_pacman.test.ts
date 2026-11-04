@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { resolveDevtoolsBuildTarget, writeChrootPacmanConfig } from '../src/chroot_pacman';
+import { resolveDevtoolsBuildTarget, writeChrootPacmanConfig } from '../src/chroot_pacman.ts';
 
 const tmpDirs: string[] = [];
 
