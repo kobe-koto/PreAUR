@@ -97,6 +97,14 @@
                         "makepkg"
                     ]
                 },
+                "checksumArch": {
+                    "description": "Default checksum scope for all packages: all or target. Default: all. See the package checksumArch option.",
+                    "type": "string",
+                    "enum": [
+                        "all",
+                        "target"
+                    ]
+                },
                 "trustedAurGitPrefixes": {
                     "type": "array",
                     "items": {
@@ -685,6 +693,14 @@
                     "push": {
                         "description": "Push package PKGBUILD changes to AUR on success.",
                         "type": "boolean"
+                    },
+                    "checksumArch": {
+                        "description": "Checksum scope for this package; overrides config.checksumArch. all runs updpkgsums for every architecture. target only downloads and hashes the generic and builder architecture sources and leaves other architectures' checksums outdated, so it requires a devtools builder such as extra-x86_64-build and is refused when push is true.",
+                        "type": "string",
+                        "enum": [
+                            "all",
+                            "target"
+                        ]
                     },
                     "dummy_packages": {
                         "description": "Dummy packages installed before build.",

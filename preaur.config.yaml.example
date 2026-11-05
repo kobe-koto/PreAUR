@@ -5,6 +5,13 @@ config:
   # "native" -> fast built-in parser with bash expansion fallback (default)
   # "makepkg" -> use `makepkg --printsrcinfo` for makepkg-compatible parsing
   pkgbuildParser: "native"
+  # Which sources the PKGBUILD checksum update downloads and hashes:
+  # "all"    -> updpkgsums: sources of every architecture in arch=() (default)
+  # "target" -> only generic sources and those of the builder architecture
+  #             (x86_64 for extra-x86_64-build). Other architectures' checksums
+  #             stay outdated, so packages with push: true fail with an error
+  #             until they set checksumArch: "all". Packages can override this.
+  # checksumArch: "target"
   # PKGBUILD metadata commands run in a chroot sandbox by default. This covers
   # makepkg --printsrcinfo, dynamic pkgver(), and updpkgsums before the package
   # enters the real build.

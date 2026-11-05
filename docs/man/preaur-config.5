@@ -82,6 +82,9 @@ Runtime behavior settings.
 .B pkgbuildParser
 Type: native | makepkg. Required: no. PKGBUILD parser implementation.
 .TP
+.B checksumArch
+Type: all | target. Required: no. Default checksum scope for all packages: all or target. Default: all. See the package checksumArch option.
+.TP
 .B trustedAurGitPrefixes
 Type: array<string>. Required: no. Git URL prefixes treated as AUR package sources.
 .TP
@@ -246,6 +249,9 @@ Type: string. Required: no. Build command such as extra\-x86_64\-build.
 .TP
 .B push
 Type: boolean. Required: no. Push package PKGBUILD changes to AUR on success.
+.TP
+.B checksumArch
+Type: all | target. Required: no. Checksum scope for this package; overrides config.checksumArch. all runs updpkgsums for every architecture. target only downloads and hashes the generic and builder architecture sources and leaves other architectures' checksums outdated, so it requires a devtools builder such as extra\-x86_64\-build and is refused when push is true.
 .TP
 .B dummy_packages
 Type: array<object>. Required: no. Dummy packages installed before build.

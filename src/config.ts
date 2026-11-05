@@ -7,6 +7,7 @@ import {
     PreaurRawConfigSchema,
     type PreaurChrootPacmanConfig,
     type PreaurChrootPacmanRepository,
+    type PreaurChecksumArch,
     type PreaurChecker,
     type PreaurDebChecker,
     type PreaurDummyPackage,
@@ -30,6 +31,7 @@ import { resolveValidToolchain } from './toolchain.ts';
 export type {
     PreaurChrootPacmanConfig,
     PreaurChrootPacmanRepository,
+    PreaurChecksumArch,
     PreaurChecker,
     PreaurDebChecker,
     PreaurDummyPackage,

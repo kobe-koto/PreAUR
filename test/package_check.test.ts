@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { runPackageVersionCheck, type PackageVersionCheckDeps } from '../src/package_check.ts';
+import { resolveChecksumTargetArch, runPackageVersionCheck, type PackageVersionCheckDeps } from '../src/package_check.ts';
 import type { PreaurPackage } from '../src/config.ts';
 import { envPairsToRecord, type EnvPairs } from '../src/env.ts';
 import { VersionStore } from '../src/version_store.ts';
@@ -41,7 +41,70 @@ function makeDeps(finalData: { epoch?: number; pkgver: string; pkgrel: number; p
     };
 }
 
+describe('resolveChecksumTargetArch', () => {
+    test('updates all architectures by default', () => {
+        expect(resolveChecksumTargetArch({ pkgname: 'demo' }, 'extra-x86_64-build', undefined)).toBeUndefined();
+    });
+
+    test('resolves the builder architecture, with the package option overriding the default', () => {
+        expect(resolveChecksumTargetArch({ pkgname: 'demo' }, 'extra-aarch64-build', 'target')).toBe('aarch64');
+        expect(resolveChecksumTargetArch({ pkgname: 'demo', checksumArch: 'target' }, 'multilib-build', 'all')).toBe('x86_64');
+        expect(resolveChecksumTargetArch({ pkgname: 'demo', checksumArch: 'all', push: true }, 'extra-x86_64-build', 'target')).toBeUndefined();
+    });
+
+    test('refuses partial checksums for packages pushed to the AUR', () => {
+        expect(() => resolveChecksumTargetArch({ pkgname: 'demo', push: true }, 'extra-x86_64-build', 'target'))
+            .toThrow('to the AUR');
+    });
+
+    test('refuses builders without a known architecture', () => {
+        expect(() => resolveChecksumTargetArch({ pkgname: 'demo', checksumArch: 'target' }, 'pkgctl build', undefined))
+            .toThrow('cannot determine the target architecture');
+    });
+});
+
 describe('runPackageVersionCheck', () => {
+    test('passes the target architecture to the PKGBUILD update', async () => {
+        const baseDir = await makeBaseDir();
+        const store = new VersionStore(baseDir);
+        await store.load();
+
+        const deps = makeDeps({ pkgver: '1.0.0', pkgrel: 1 });
+        const checksumArchs: Array<string | undefined> = [];
+        deps.updatePkgBuild = async (_pkgname, _path, _updates, _bump, _parser, _env, checksumArch) => {
+            checksumArchs.push(checksumArch);
+            return false;
+        };
+
+        await runPackageVersionCheck([
+            { pkgname: 'partial', maintainer: 'preaur-owner', builder: 'extra-aarch64-build' },
+            { pkgname: 'full', maintainer: 'preaur-owner', checksumArch: 'all' },
+        ], store, { baseDir, deps, checksumArch: 'target' });
+
+        expect(checksumArchs.sort()).toEqual(['aarch64', undefined].sort());
+    });
+
+    test('fails pushed packages with partial checksums before touching the PKGBUILD', async () => {
+        const baseDir = await makeBaseDir();
+        const store = new VersionStore(baseDir);
+        await store.load();
+
+        const deps = makeDeps({ pkgver: '1.0.0', pkgrel: 1 });
+        let prepared = false;
+        deps.preparePackageDiff = async () => { prepared = true; throw new Error('should not run'); };
+        const events: string[] = [];
+        const webhook = { notify: async (tag: string) => { events.push(tag); } } as unknown as WebhookNotifier;
+
+        const result = await runPackageVersionCheck([
+            { pkgname: 'demo', maintainer: 'preaur-owner', push: true, checksumArch: 'target' },
+        ], store, { baseDir, deps, webhook });
+
+        expect(prepared).toBe(false);
+        expect(result.buildPlans).toEqual([]);
+        expect(result.skippedPackages[0]?.reason).toContain('to the AUR');
+        expect(events).toEqual(['PACKAGE_CHECK_FAILED']);
+    });
+
     test('schedules packages without a stored successful build version', async () => {
         const baseDir = await makeBaseDir();
         const store = new VersionStore(baseDir);

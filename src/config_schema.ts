@@ -103,8 +103,11 @@ const PreaurToolchainSchema = z.object({
     stripOnLink: z.boolean().optional().describe('Strip at link time (-s in LDFLAGS) and disable makepkg post-build stripping (!strip). No debug package is produced.'),
 }).strict().describe('Compiler, linker, and makepkg build option overrides applied to devtools chroot builds through a makepkg.conf drop-in.');
 
+const PreaurChecksumArchSchema = z.enum(['all', 'target']).describe('Which sources PKGBUILD checksum updates download and hash. all runs updpkgsums, which downloads the sources of every architecture in arch=(). target downloads and hashes only the generic sources and those of the builder architecture (for example x86_64 for extra-x86_64-build), leaving the other architectures\' checksum arrays unchanged and therefore outdated after a version change. target falls back to all when arch=() does not list the builder architecture, and it is refused for packages with push: true, since the outdated checksums would be published.');
+
 const PreaurRuntimeConfigSchema = z.object({
     pkgbuildParser: z.enum(['native', 'makepkg']).optional().describe('PKGBUILD parser implementation.'),
+    checksumArch: PreaurChecksumArchSchema.optional().describe('Default checksum scope for all packages: all or target. Default: all. See the package checksumArch option.'),
     trustedAurGitPrefixes: stringList('Git URL prefixes treated as AUR package sources.').optional(),
     pkgbuildSandbox: PreaurPkgbuildSandboxSchema.optional(),
     chrootPacman: PreaurChrootPacmanSchema.optional(),
@@ -181,6 +184,7 @@ const PreaurPackageSchema = z.object({
     checker: PreaurCheckerSchema.optional(),
     builder: z.string().optional().describe('Build command such as extra-x86_64-build.'),
     push: z.boolean().optional().describe('Push package PKGBUILD changes to AUR on success.'),
+    checksumArch: PreaurChecksumArchSchema.optional().describe('Checksum scope for this package; overrides config.checksumArch. all runs updpkgsums for every architecture. target only downloads and hashes the generic and builder architecture sources and leaves other architectures\' checksums outdated, so it requires a devtools builder such as extra-x86_64-build and is refused when push is true.'),
     dummy_packages: z.array(PreaurDummyPackageSchema).optional().describe('Dummy packages installed before build.'),
     repo_packages: stringList('Local repo packages required before this build.').optional(),
     'pre-build-packages': stringList('Packages installed in chroot before build.').optional(),
@@ -213,6 +217,7 @@ export type PreaurPkgbuildSandboxConfig = z.output<typeof PreaurPkgbuildSandboxS
 export type PreaurChrootPacmanRepository = z.output<typeof PreaurChrootPacmanRepositorySchema>;
 export type PreaurChrootPacmanConfig = z.output<typeof PreaurChrootPacmanSchema>;
 export type PreaurToolchainConfig = z.output<typeof PreaurToolchainSchema>;
+export type PreaurChecksumArch = z.output<typeof PreaurChecksumArchSchema>;
 export type PreaurChecker = z.output<typeof PreaurCheckerSchema>;
 export type PreaurGitHubChecker = z.output<typeof PreaurGitHubCheckerSchema>;
 export type PreaurDebChecker = z.output<typeof PreaurDebCheckerSchema>;

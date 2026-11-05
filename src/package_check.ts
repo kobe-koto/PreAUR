@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { SimpleGit } from 'simple-git';
 
-import type { PreaurPackage, PreaurPkgbuildSandboxConfig, PreaurRepo } from './config.ts';
+import type { PreaurChecksumArch, PreaurPackage, PreaurPkgbuildSandboxConfig, PreaurRepo } from './config.ts';
 import type { EnvPairs } from './env.ts';
 import type { CheckerResult } from './checker.ts';
 import { applyVersionTemplate, fetchLatestVersion } from './checker.ts';
@@ -13,6 +13,7 @@ import { hasBuiltPackage } from './repo.ts';
 import { ensurePackageCheckWorkDirs, getPackageWorkDirs, packageWorkEnvPairs, type PackageWorkDirs } from './workdirs.ts';
 import { formatPacmanVersion, hasPacmanVersion, pacmanVersionChanged } from './pacman_version.ts';
 import { constructMessager } from './logger.ts';
+import { resolveDevtoolsBuildTarget } from './chroot_pacman.ts';
 import { saveVersionStoreUpdate, type ProjectGitManager } from './project_git.ts';
 import type { WebhookNotifier } from './webhook.ts';
 import {
@@ -81,6 +82,8 @@ export async function runPackageVersionCheck(
         updateCheckCocurrent?: number;
         projectGit?: ProjectGitManager;
         pkgbuildSandbox?: PreaurPkgbuildSandboxConfig;
+        /** Default checksum scope; package checksumArch overrides it. */
+        checksumArch?: PreaurChecksumArch;
         webhook?: WebhookNotifier;
     } = {}
 ): Promise<PackageVersionCheckResult> {
@@ -93,6 +96,7 @@ export async function runPackageVersionCheck(
         updateCheckCocurrent = 1,
         projectGit,
         pkgbuildSandbox,
+        checksumArch,
         webhook,
     } = options;
 
@@ -111,6 +115,7 @@ export async function runPackageVersionCheck(
             deps,
             projectGit,
             pkgbuildSandbox,
+            checksumArch,
             webhook,
         }).then(result => {
             if ('skipped' in result && result.skipped && result.reason) {
@@ -132,6 +137,31 @@ export async function runPackageVersionCheck(
     return { buildPlans, skippedPackages };
 }
 
+/**
+ * Architecture whose sources alone get checksummed, or undefined to update
+ * checksums for every architecture. Partial checksums leave the other
+ * architectures' arrays outdated, so they must never leave this machine:
+ * packages pushed to the AUR are refused and need manual intervention.
+ */
+export function resolveChecksumTargetArch(
+    pkg: Pick<PreaurPackage, 'pkgname' | 'push' | 'checksumArch'>,
+    builderType: string,
+    defaultMode: PreaurChecksumArch | undefined
+): string | undefined {
+    const mode = pkg.checksumArch ?? defaultMode ?? 'all';
+    if (mode === 'all') return undefined;
+
+    if (pkg.push) {
+        throw new Error(`checksumArch "target" would push PKGBUILD checksums for ${pkg.pkgname} that only cover the builder architecture to the AUR. Set checksumArch: all for this package, or disable push.`);
+    }
+
+    const target = resolveDevtoolsBuildTarget(builderType.split(' ')[0] ?? '');
+    if (!target) {
+        throw new Error(`checksumArch "target" cannot determine the target architecture of ${pkg.pkgname} from builder "${builderType}". Use a devtools builder such as extra-x86_64-build, or set checksumArch: all for this package.`);
+    }
+    return target.arch;
+}
+
 async function processPackageVersionCheck(
     pkg: PreaurPackage,
     versionStore: VersionStore,
@@ -143,6 +173,7 @@ async function processPackageVersionCheck(
         deps: PackageVersionCheckDeps;
         projectGit?: ProjectGitManager;
         pkgbuildSandbox?: PreaurPkgbuildSandboxConfig;
+        checksumArch?: PreaurChecksumArch;
         webhook?: WebhookNotifier;
     }
 ): Promise<PackageBuildPlan | { skipped: true; reason?: string }> {
@@ -154,8 +185,13 @@ async function processPackageVersionCheck(
         deps,
         projectGit,
         pkgbuildSandbox,
+        checksumArch,
         webhook,
     } = options;
+
+    const builderType = pkg.builder || 'extra-x86_64-build';
+    // Checked before anything is cloned or rewritten.
+    const checksumTargetArch = resolveChecksumTargetArch(pkg, builderType, checksumArch);
 
     const prepare = deps.preparePackageDiff ?? preparePackageDiff;
     const fetchVersion = deps.fetchLatestVersion ?? fetchLatestVersion;
@@ -179,7 +215,6 @@ async function processPackageVersionCheck(
         pkgbuildsBase
     );
 
-    const builderType = pkg.builder || 'extra-x86_64-build';
     const pkgbuildPath = path.resolve(pkgDir, 'PKGBUILD');
     const localData = versionStore.get(pkg.pkgname);
 
@@ -238,13 +273,14 @@ async function processPackageVersionCheck(
                 updates: Record<string, string>,
                 forceBumpRel: boolean = false,
                 parser: PkgBuildParser = 'native',
-                env?: EnvPairs
-            ) => updatePkgBuildInSandbox(pkgname, pkgbuildPath, updates, forceBumpRel, parser, env, sandbox, workDirs))
+                env?: EnvPairs,
+                checksumArch?: string
+            ) => updatePkgBuildInSandbox(pkgname, pkgbuildPath, updates, forceBumpRel, parser, env, sandbox, workDirs, checksumArch))
             : updatePkgBuild);
 
     const dynamicPkgverRan = await updateDynamic(pkgbuildPath, env);
 
-    const pkgbuildModified = await updatePkg(pkg.pkgname, pkgbuildPath, templateUpdates, false, pkgbuildParser, env);
+    const pkgbuildModified = await updatePkg(pkg.pkgname, pkgbuildPath, templateUpdates, false, pkgbuildParser, env, checksumTargetArch);
     const { pkgverFunction, ...finalData } = await parse(pkgbuildPath, pkgbuildParser, env);
     if (pkgverFunction && !dynamicPkgverRan) {
         console.warn(pkgMessager(pc.yellow('PKGBUILD defines pkgver() in a form PreAUR did not detect; the dynamic version was not updated.')));

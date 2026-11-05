@@ -149,6 +149,7 @@ program
                     updateCheckCocurrent: config.resources.updateCheckCocurrent,
                     projectGit,
                     pkgbuildSandbox: config.config?.pkgbuildSandbox,
+                    checksumArch: config.config?.checksumArch,
                     webhook,
                 }
             );

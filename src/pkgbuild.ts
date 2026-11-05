@@ -224,6 +224,172 @@ export async function parsePkgBuild(pkgbuildPath: string, parser: PkgBuildParser
         : parsePkgBuildNative(pkgbuildPath);
 }
 
+const TARGET_SUMS_BEGIN = '__PREAUR_TARGET_SUMS_BEGIN__';
+const TARGET_SUMS_END = '__PREAUR_TARGET_SUMS_END__';
+const TARGET_SUMS_UNSUPPORTED = '__PREAUR_TARGET_SUMS_UNSUPPORTED__';
+const ARCH_NAME_PATTERN = /^[A-Za-z0-9_]+$/;
+
+// makepkg's known_hash_algos; the patterns match the ones updpkgsums uses.
+const SUMS_START = /^[ \t]*((?:ck|md5|sha1|sha224|sha256|sha384|sha512|b2)sums(?:_[^=+\s]+)?)\+?=/;
+const SUMS_END = /\)[ \t]*(?:#.*)?$/;
+
+/**
+ * Bash script, run in the PKGBUILD directory, that generates checksums for the
+ * generic sources and the sources of one architecture only. makepkg -g always
+ * downloads every architecture's sources, so it runs on a temporary copy whose
+ * arch=() is narrowed to the target. Prints TARGET_SUMS_UNSUPPORTED when the
+ * PKGBUILD's arch=() does not list the target (including arch=('any')).
+ */
+export function targetArchChecksumScript(arch: string): string {
+    if (!ARCH_NAME_PATTERN.test(arch)) {
+        throw new Error(`Invalid target architecture for checksums: ${arch}`);
+    }
+
+    return [
+        'set -euo pipefail',
+        `target=${shellQuote(arch)}`,
+        `archs=$(set +eu; export CARCH="$target"; source ./PKGBUILD >/dev/null 2>&1; printf '%s\\n' "\${arch[@]}")`,
+        `if ! grep -qxF -- "$target" <<<"$archs"; then printf '%s\\n' ${shellQuote(TARGET_SUMS_UNSUPPORTED)}; exit 0; fi`,
+        // makepkg -p only accepts a build file in the current directory.
+        'tmpfile=$(mktemp .preaur-updpkgsums.XXXXXX)',
+        'builddir=$(mktemp -d "${TMPDIR:-/tmp}/preaur-updpkgsums.XXXXXX")',
+        `trap 'rm -rf -- "$tmpfile" "$builddir"' EXIT`,
+        `{ cat ./PKGBUILD; printf '\\narch=(%q)\\n' "$target"; } > "$tmpfile"`,
+        'sums=$(BUILDDIR="$builddir" makepkg -g -p "$tmpfile")',
+        `printf '%s\\n%s\\n%s\\n' ${shellQuote(TARGET_SUMS_BEGIN)} "$sums" ${shellQuote(TARGET_SUMS_END)}`,
+    ].join('\n');
+}
+
+/** Checksum arrays from targetArchChecksumScript output, or undefined when the target is not in arch=(). */
+export function parseTargetArchChecksumOutput(stdout: string): string | undefined {
+    if (stdout.includes(TARGET_SUMS_UNSUPPORTED)) return undefined;
+
+    const begin = stdout.lastIndexOf(TARGET_SUMS_BEGIN);
+    const end = begin === -1 ? -1 : stdout.indexOf(TARGET_SUMS_END, begin);
+    if (begin === -1 || end === -1) {
+        throw new Error('Could not parse target architecture checksum output: missing markers');
+    }
+
+    const sums = stdout.slice(begin + TARGET_SUMS_BEGIN.length, end).trim();
+    if (!sums) {
+        throw new Error('PKGBUILD does not contain sources to update');
+    }
+    return sums;
+}
+
+interface SumsBlock {
+    name: string;
+    start: number;
+    /** Index of the last line of the block. */
+    end: number;
+}
+
+function findSumsBlocks(lines: string[]): SumsBlock[] {
+    const blocks: SumsBlock[] = [];
+    for (let i = 0; i < lines.length; i += 1) {
+        const name = lines[i]!.match(SUMS_START)?.[1];
+        if (!name) continue;
+
+        let end = i;
+        while (end < lines.length && !SUMS_END.test(lines[end]!)) end += 1;
+        if (end === lines.length) {
+            throw new Error(`Unterminated checksum array ${name} in PKGBUILD`);
+        }
+        blocks.push({ name, start: i, end });
+        i = end;
+    }
+    return blocks;
+}
+
+/**
+ * Replace only the checksum arrays present in newSums (all their assignments,
+ * including +=), keeping arrays of other architectures as they are. Arrays new
+ * to the PKGBUILD go after the last replaced array, or at the end of the file.
+ */
+export function mergeChecksumArrays(content: string, newSums: string): string {
+    const newLines = newSums.split(/\r?\n/);
+    const replacements = new Map<string, string[]>();
+    for (const block of findSumsBlocks(newLines)) {
+        replacements.set(block.name, newLines.slice(block.start, block.end + 1));
+    }
+    if (replacements.size === 0) {
+        throw new Error('No checksum arrays found in generated checksums');
+    }
+
+    const lines = content.split('\n');
+    const output: string[] = [];
+    const written = new Set<string>();
+    let insertAt: number | undefined;
+    let cursor = 0;
+
+    for (const block of findSumsBlocks(lines)) {
+        output.push(...lines.slice(cursor, block.start));
+        cursor = block.end + 1;
+
+        const replacement = replacements.get(block.name);
+        if (!replacement) {
+            output.push(...lines.slice(block.start, cursor));
+            continue;
+        }
+        if (!written.has(block.name)) {
+            output.push(...replacement);
+            written.add(block.name);
+            insertAt = output.length;
+        }
+    }
+    output.push(...lines.slice(cursor));
+
+    const missing = [...replacements].filter(([name]) => !written.has(name)).flatMap(([, block]) => block);
+    if (missing.length > 0) {
+        if (insertAt !== undefined) {
+            output.splice(insertAt, 0, ...missing);
+        } else {
+            if (output.length > 0 && output[output.length - 1] === '') output.pop();
+            output.push(...missing, '');
+        }
+    }
+
+    return output.join('\n');
+}
+
+/**
+ * Update the checksums of the generic and one architecture's sources, falling
+ * back to updating all checksums when the PKGBUILD does not list that
+ * architecture. runCapture runs a shell command in the PKGBUILD directory.
+ */
+export async function updateTargetArchChecksums(
+    pkgbuildPath: string,
+    arch: string,
+    ops: {
+        runCapture: (command: string) => Promise<string>;
+        updateAll: () => Promise<void>;
+    }
+): Promise<void> {
+    const pkgMessager = constructMessager('PKGBUILD Updater', path.basename(path.dirname(pkgbuildPath)));
+    const stdout = await ops.runCapture(`bash -c ${shellQuote(targetArchChecksumScript(arch))}`);
+    const newSums = parseTargetArchChecksumOutput(stdout);
+    if (newSums === undefined) {
+        console.log(pkgMessager(`arch=() does not list ${arch}; updating checksums for all architectures.`));
+        await ops.updateAll();
+        return;
+    }
+
+    console.log(pkgMessager(`Updated checksums for generic and ${arch} sources only; other architectures' checksums were left unchanged.`));
+    const content = await fs.readFile(pkgbuildPath, 'utf8');
+    const merged = mergeChecksumArrays(content, newSums);
+    if (merged !== content) {
+        await fs.writeFile(pkgbuildPath, merged, 'utf8');
+    }
+}
+
+async function updateTargetArchChecksumsOnHost(pkgbuildPath: string, env: EnvPairs | undefined, arch: string): Promise<void> {
+    const pkgbuildDir = path.dirname(pkgbuildPath);
+    await updateTargetArchChecksums(pkgbuildPath, arch, {
+        runCapture: async command => (await execAsync(shellEnvCommand(command, env), { cwd: pkgbuildDir })).stdout,
+        updateAll: () => updateChecksums(pkgbuildPath, env),
+    });
+}
+
 async function updateChecksums(pkgbuildPath: string, env?: EnvPairs): Promise<void> {
     const pkgMessager = constructMessager('PKGBUILD Updater', path.basename(path.dirname(pkgbuildPath)));
     try {
@@ -267,7 +433,8 @@ export async function updatePkgBuild(
     updates: Record<string, string>,
     forceBumpRel: boolean = false,
     parser: PkgBuildParser = 'native',
-    env?: EnvPairs
+    env?: EnvPairs,
+    checksumArch?: string
 ): Promise<boolean> {
     return updatePkgBuildWithOps(
         pkgname,
@@ -278,7 +445,9 @@ export async function updatePkgBuild(
         env,
         {
             parse: parsePkgBuild,
-            updateChecksums,
+            updateChecksums: checksumArch
+                ? (pathToUpdate, envToUse) => updateTargetArchChecksumsOnHost(pathToUpdate, envToUse, checksumArch)
+                : updateChecksums,
         }
     );
 }

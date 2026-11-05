@@ -61,6 +61,7 @@ Runtime behavior settings.
 | Key | Required | Type | Default | Description |
 | --- | --- | --- | --- | --- |
 | `pkgbuildParser` | no | native \| makepkg |  | PKGBUILD parser implementation. |
+| `checksumArch` | no | all \| target |  | Default checksum scope for all packages: all or target. Default: all. See the package checksumArch option. |
 | `trustedAurGitPrefixes` | no | array<string> |  | Git URL prefixes treated as AUR package sources. |
 | `pkgbuildSandbox` | no | object | {} | Chroot sandbox used for PKGBUILD metadata commands before building. |
 | `chrootPacman` | no | object |  | Pacman configuration added to devtools chroots. |
@@ -164,6 +165,7 @@ A package build entry.
 | `checker` | no | object |  | Upstream version checker. |
 | `builder` | no | string |  | Build command such as extra-x86_64-build. |
 | `push` | no | boolean |  | Push package PKGBUILD changes to AUR on success. |
+| `checksumArch` | no | all \| target |  | Checksum scope for this package; overrides config.checksumArch. all runs updpkgsums for every architecture. target only downloads and hashes the generic and builder architecture sources and leaves other architectures' checksums outdated, so it requires a devtools builder such as extra-x86_64-build and is refused when push is true. |
 | `dummy_packages` | no | array<object> |  | Dummy packages installed before build. |
 | `repo_packages` | no | array<string> |  | Local repo packages required before this build. |
 | `pre-build-packages` | no | array<string> |  | Packages installed in chroot before build. |

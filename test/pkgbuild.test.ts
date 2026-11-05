@@ -3,7 +3,20 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { isStaticVersionPkgbuild, parseLiteralPkgbase, parsePkgBuild, parseSrcInfoPkgbase } from '../src/pkgbuild.ts';
+import { createHash } from 'node:crypto';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+
+import {
+    isStaticVersionPkgbuild,
+    mergeChecksumArrays,
+    parseLiteralPkgbase,
+    parsePkgBuild,
+    parseSrcInfoPkgbase,
+    parseTargetArchChecksumOutput,
+    updatePkgBuild,
+    updateTargetArchChecksums,
+} from '../src/pkgbuild.ts';
 
 const tmpDirs: string[] = [];
 
@@ -187,5 +200,118 @@ describe('isStaticVersionPkgbuild', () => {
 
     test('rejects a function body whose closing brace is not at column 0', () => {
         expect(isStaticVersionPkgbuild('pkgver=1\npkgrel=1\nbuild() {\n  make\n  }\n')).toBe(false);
+    });
+});
+
+describe('mergeChecksumArrays', () => {
+    const pkgbuild = [
+        'pkgname=demo',
+        "source=('a.tar.gz')",
+        "source_x86_64=('x.bin')",
+        "source_aarch64=('arm.bin')",
+        "sha256sums=('old-a')",
+        "sha256sums_x86_64=('old-x'",
+        "                   'old-x2') # trailing comment",
+        "sha256sums_aarch64=('old-arm')",
+        '',
+        'package() {',
+        '    true',
+        '}',
+        '',
+    ].join('\n');
+
+    test('replaces generated arrays and keeps other architectures unchanged', () => {
+        const merged = mergeChecksumArrays(pkgbuild, "sha256sums=('new-a')\nsha256sums_x86_64=('new-x')");
+        expect(merged).toBe(pkgbuild
+            .replace("sha256sums=('old-a')", "sha256sums=('new-a')")
+            .replace("sha256sums_x86_64=('old-x'\n                   'old-x2') # trailing comment", "sha256sums_x86_64=('new-x')"));
+    });
+
+    test('drops += assignments of replaced arrays and keeps those of other arrays', () => {
+        const content = "sha256sums=('old')\nsha256sums+=('extra')\nsha256sums_aarch64+=('arm')\n";
+        expect(mergeChecksumArrays(content, "sha256sums=('new'\n            'new2')"))
+            .toBe("sha256sums=('new'\n            'new2')\nsha256sums_aarch64+=('arm')\n");
+    });
+
+    test('inserts arrays new to the PKGBUILD after the last replaced array', () => {
+        const content = "sha256sums=('old')\nsha256sums_aarch64=('arm')\nbuild() { :; }\n";
+        expect(mergeChecksumArrays(content, "sha256sums=('new')\nsha256sums_x86_64=('x')"))
+            .toBe("sha256sums=('new')\nsha256sums_x86_64=('x')\nsha256sums_aarch64=('arm')\nbuild() { :; }\n");
+    });
+
+    test('appends arrays at the end when the PKGBUILD has none', () => {
+        expect(mergeChecksumArrays("pkgname=demo\n", "sha256sums=('new')"))
+            .toBe("pkgname=demo\nsha256sums=('new')\n");
+    });
+
+    test('rejects unterminated arrays', () => {
+        expect(() => mergeChecksumArrays("sha256sums=('old'\n", "sha256sums=('new')")).toThrow('Unterminated checksum array sha256sums');
+    });
+});
+
+describe('parseTargetArchChecksumOutput', () => {
+    test('returns undefined when arch=() does not list the target', () => {
+        expect(parseTargetArchChecksumOutput('__PREAUR_TARGET_SUMS_UNSUPPORTED__\n')).toBeUndefined();
+    });
+
+    test('rejects output without checksums', () => {
+        expect(() => parseTargetArchChecksumOutput('__PREAUR_TARGET_SUMS_BEGIN__\n\n__PREAUR_TARGET_SUMS_END__\n'))
+            .toThrow('does not contain sources');
+    });
+});
+
+describe('updateTargetArchChecksums', () => {
+    const execAsync = promisify(exec);
+    const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+
+    async function writeMultiArchPkgbuild(arch: string): Promise<string> {
+        const pkgbuildPath = await writePkgBuild([
+            'pkgname=demo',
+            'pkgver=1',
+            'pkgrel=1',
+            `arch=(${arch})`,
+            'source=(common.txt)',
+            'source_x86_64=(x86.txt)',
+            // Fails when downloaded, so the test proves it is never fetched.
+            "source_aarch64=('https://preaur.invalid/arm.bin')",
+            "sha256sums=('old-common')",
+            "sha256sums_x86_64=('old-x86')",
+            "sha256sums_aarch64=('old-arm')",
+            '',
+        ].join('\n'));
+        const dir = path.dirname(pkgbuildPath);
+        await fs.writeFile(path.join(dir, 'common.txt'), 'common\n');
+        await fs.writeFile(path.join(dir, 'x86.txt'), 'x86\n');
+        return pkgbuildPath;
+    }
+
+    async function srcdestEnv(): Promise<Array<[string, string]>> {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'preaur-srcdest-'));
+        tmpDirs.push(dir);
+        return [['SRCDEST', dir]];
+    }
+
+    test.skipIf(!Bun.which('makepkg'))('only downloads and updates generic and target architecture sources', async () => {
+        const pkgbuildPath = await writeMultiArchPkgbuild('x86_64 aarch64');
+        await updatePkgBuild('demo', pkgbuildPath, {}, false, 'native', await srcdestEnv(), 'x86_64');
+
+        const content = await fs.readFile(pkgbuildPath, 'utf8');
+        expect(content).toContain(`sha256sums=('${sha256('common\n')}')`);
+        expect(content).toContain(`sha256sums_x86_64=('${sha256('x86\n')}')`);
+        expect(content).toContain("sha256sums_aarch64=('old-arm')");
+        expect(await fs.readdir(path.dirname(pkgbuildPath))).toEqual(expect.not.arrayContaining([expect.stringMatching(/^\.preaur-updpkgsums/)]));
+    });
+
+    test.skipIf(!Bun.which('makepkg'))('falls back to all architectures when arch=() does not list the target', async () => {
+        const pkgbuildPath = await writeMultiArchPkgbuild('aarch64');
+        const env = await srcdestEnv();
+        let updatedAll = false;
+        await updateTargetArchChecksums(pkgbuildPath, 'x86_64', {
+            runCapture: async command => (await execAsync(`env SRCDEST=${env[0]![1]} ${command}`, { cwd: path.dirname(pkgbuildPath) })).stdout,
+            updateAll: async () => { updatedAll = true; },
+        });
+
+        expect(updatedAll).toBe(true);
+        expect(await fs.readFile(pkgbuildPath, 'utf8')).toContain("sha256sums=('old-common')");
     });
 });

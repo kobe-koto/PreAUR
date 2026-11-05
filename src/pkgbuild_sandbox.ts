@@ -6,7 +6,7 @@ import * as path from 'node:path';
 
 import type { PreaurPkgbuildSandboxConfig } from './config.ts';
 import { envAssignments, shellQuote, type EnvPair, type EnvPairs } from './env.ts';
-import { PKGBASE_SHELL_EXPR, normalizePkgbase, parseSrcInfoPkgbase, updatePkgBuildWithOps, withPkgbase, type PkgBuildData, type PkgBuildParser } from './pkgbuild.ts';
+import { PKGBASE_SHELL_EXPR, normalizePkgbase, parseSrcInfoPkgbase, updatePkgBuildWithOps, updateTargetArchChecksums, withPkgbase, type PkgBuildData, type PkgBuildParser } from './pkgbuild.ts';
 import { DEVTOOLS_DIR, resolveBasePacmanConfig, resolveDevtoolsBuildTarget } from './chroot_pacman.ts';
 import type { PackageWorkDirs } from './workdirs.ts';
 import { constructMessager } from './logger.ts';
@@ -206,8 +206,17 @@ export async function updatePkgBuildInSandbox(
     parser: PkgBuildParser,
     env: EnvPairs | undefined,
     sandbox: ResolvedPkgbuildSandboxOptions,
-    workDirs: PackageWorkDirs
+    workDirs: PackageWorkDirs,
+    checksumArch?: string
 ): Promise<boolean> {
+    const updateAllChecksums = (pathToUpdate: string, envToUse?: EnvPairs) => runSandboxCommand({
+        pkgbuildPath: pathToUpdate,
+        env: envToUse,
+        sandbox,
+        workDirs,
+        command: 'updpkgsums',
+    }).then(() => undefined);
+
     return updatePkgBuildWithOps(
         pkgname,
         pkgbuildPath,
@@ -217,13 +226,19 @@ export async function updatePkgBuildInSandbox(
         env,
         {
             parse: (pathToParse, parserToUse, envToUse) => parsePkgBuildInSandbox(pathToParse, parserToUse, envToUse, sandbox, workDirs),
-            updateChecksums: (pathToUpdate, envToUse) => runSandboxCommand({
-                pkgbuildPath: pathToUpdate,
-                env: envToUse,
-                sandbox,
-                workDirs,
-                command: 'updpkgsums',
-            }).then(() => undefined),
+            updateChecksums: checksumArch
+                ? (pathToUpdate, envToUse) => updateTargetArchChecksums(pathToUpdate, checksumArch, {
+                    runCapture: command => runSandboxCommand({
+                        pkgbuildPath: pathToUpdate,
+                        env: envToUse,
+                        sandbox,
+                        workDirs,
+                        command,
+                        captureStdout: true,
+                    }),
+                    updateAll: () => updateAllChecksums(pathToUpdate, envToUse),
+                })
+                : updateAllChecksums,
         }
     );
 }
