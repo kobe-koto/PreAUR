@@ -86,10 +86,25 @@ function applyCommonTransforms(config: PreaurChecker, version: string): string {
 }
 
 /**
+ * Tag filters that only filter. prefix and suffix filter too, so the
+ * filter_ counterpart is ignored when both are set.
+ */
+function githubFilterOnly(config: PreaurGitHubChecker): { prefix?: string; suffix?: string } {
+    return {
+        prefix: config.prefix ? undefined : config.filter_prefix || undefined,
+        suffix: config.suffix ? undefined : config.filter_suffix || undefined,
+    };
+}
+
+/**
  * Turns a GitHub tag into a version, or returns null when the tag is filtered
- * out by prefix, suffix or template.
+ * out by prefix, suffix, filter_prefix, filter_suffix or template.
  */
 export function transformGitHubTag(config: PreaurGitHubChecker, tag: string): string | null {
+    const filterOnly = githubFilterOnly(config);
+    if (filterOnly.prefix && !tag.startsWith(filterOnly.prefix)) return null;
+    if (filterOnly.suffix && !tag.endsWith(filterOnly.suffix)) return null;
+
     let version = tag;
 
     if (config.prefix) {
@@ -166,7 +181,13 @@ export class GitHubProvider implements CheckerProvider<PreaurGitHubChecker> {
         }
 
         const includePrerelease = use === 'prerelease';
-        const hasFilters = !!(config.prefix || config.suffix || config.template);
+        const filterOnly = githubFilterOnly(config);
+        const hasFilters = !!(config.prefix || config.suffix || filterOnly.prefix || filterOnly.suffix || config.template);
+        for (const key of ['prefix', 'suffix'] as const) {
+            if (config[key] && config[`filter_${key}`]) {
+                console.warn(UpdateCheckerMessager(`GitHub checker for ${repo} sets both ${key} and filter_${key}; ignoring filter_${key}.`));
+            }
+        }
 
         try {
             // Without filters, keep relying on GitHub's own "latest release" designation.
@@ -207,6 +228,8 @@ export class GitHubProvider implements CheckerProvider<PreaurGitHubChecker> {
             const filters = [
                 config.prefix ? `prefix "${config.prefix}"` : '',
                 config.suffix ? `suffix "${config.suffix}"` : '',
+                filterOnly.prefix ? `filter_prefix "${filterOnly.prefix}"` : '',
+                filterOnly.suffix ? `filter_suffix "${filterOnly.suffix}"` : '',
                 config.template ? `template "${config.template}"` : '',
             ].filter(Boolean).join(', ');
             throw new Error(`No ${includePrerelease ? '' : 'non-prerelease '}GitHub release matched${filters ? ` ${filters}` : ''} in the newest ${GITHUB_RELEASES_PER_PAGE * GITHUB_RELEASES_MAX_PAGES} releases`);

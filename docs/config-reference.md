@@ -188,6 +188,8 @@ GitHub version checker.
 | `use` | no | string |  | Release selector such as release or prerelease. |
 | `prefix` | no | string |  | Required tag prefix. Releases whose tag lacks it are skipped; it is stripped from the matching tag. |
 | `suffix` | no | string |  | Required tag suffix. Releases whose tag lacks it are skipped; it is stripped from the matching tag. |
+| `filter_prefix` | no | string |  | Required tag prefix that is not stripped: releases whose tag lacks it are skipped, and the tag is turned into a version as if it were not set (including the default removal of a leading v). Ignored when prefix is also set. |
+| `filter_suffix` | no | string |  | Required tag suffix that is not stripped: releases whose tag lacks it are skipped, and the tag is turned into a version as if it were not set. Ignored when suffix is also set. |
 
 #### packages[].checker: deb
 

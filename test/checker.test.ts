@@ -50,6 +50,26 @@ describe('transformGitHubTag', () => {
         expect(transformGitHubTag(gh({ suffix: '_beta' }), 'v2.0')).toBeNull();
     });
 
+    test('filter_prefix and filter_suffix filter without stripping', () => {
+        const config = gh({ filter_prefix: 'v2.', filter_suffix: '-stable' });
+        expect(transformGitHubTag(config, 'v2.1.0-stable')).toBe('2.1.0-stable');
+        expect(transformGitHubTag(config, 'v3.0.0-stable')).toBeNull();
+        expect(transformGitHubTag(config, 'v2.1.0-beta')).toBeNull();
+        expect(transformGitHubTag(gh({ filter_prefix: 'release-' }), 'release-1.0')).toBe('release-1.0');
+    });
+
+    test('ignores filter_prefix and filter_suffix when prefix and suffix are set', () => {
+        const config = gh({ prefix: 'app-', filter_prefix: 'cli-', suffix: '_rc', filter_suffix: '_beta' });
+        expect(transformGitHubTag(config, 'app-1.0_rc')).toBe('1.0');
+        expect(transformGitHubTag(config, 'cli-1.0_beta')).toBeNull();
+    });
+
+    test('combines prefix with filter_suffix', () => {
+        const config = gh({ prefix: 'app-v', filter_suffix: '-lts' });
+        expect(transformGitHubTag(config, 'app-v1.0-lts')).toBe('1.0-lts');
+        expect(transformGitHubTag(config, 'app-v1.1')).toBeNull();
+    });
+
     test('filters out tags that do not match the template', () => {
         const config = gh({ template: '{~pkgver}.{_build}' });
         expect(transformGitHubTag(config, 'v1.2')).toBe('1.2');
@@ -109,6 +129,21 @@ describe('GitHubProvider filtering', () => {
 
         expect(await new GitHubProvider().check(gh({ prefix: 'app-v' }))).toEqual({ version: '1.4.0' });
         expect(String(getSpy.mock.calls[0]?.[0])).toEndWith('/releases');
+    });
+
+    test('walks releases when only filter_prefix is configured', async () => {
+        getSpy = spyOn(http, 'getJson').mockResolvedValue([
+            { tag_name: 'v3.0.0', prerelease: false },
+            { tag_name: 'v2.9.1', prerelease: false },
+        ]);
+
+        expect(await new GitHubProvider().check(gh({ filter_prefix: 'v2.' }))).toEqual({ version: '2.9.1' });
+        expect(String(getSpy.mock.calls[0]?.[0])).toEndWith('/releases');
+    });
+
+    test('names filter_prefix in the error when no release matches', async () => {
+        getSpy = spyOn(http, 'getJson').mockResolvedValue([{ tag_name: 'v3.0.0' }]);
+        await expect(new GitHubProvider().check(gh({ filter_prefix: 'v2.' }))).rejects.toThrow(/matched filter_prefix "v2\."/);
     });
 
     test('includes prereleases when use is prerelease', async () => {

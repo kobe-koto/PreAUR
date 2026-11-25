@@ -127,6 +127,8 @@ const PreaurGitHubCheckerSchema = z.object({
     use: z.string().optional().describe('Release selector such as release or prerelease.'),
     prefix: z.string().optional().describe('Required tag prefix. Releases whose tag lacks it are skipped; it is stripped from the matching tag.'),
     suffix: z.string().optional().describe('Required tag suffix. Releases whose tag lacks it are skipped; it is stripped from the matching tag.'),
+    filter_prefix: z.string().optional().describe('Required tag prefix that is not stripped: releases whose tag lacks it are skipped, and the tag is turned into a version as if it were not set (including the default removal of a leading v). Ignored when prefix is also set.'),
+    filter_suffix: z.string().optional().describe('Required tag suffix that is not stripped: releases whose tag lacks it are skipped, and the tag is turned into a version as if it were not set. Ignored when suffix is also set.'),
 }).strict().describe('GitHub version checker.');
 
 const PreaurDebCheckerSchema = z.object({
