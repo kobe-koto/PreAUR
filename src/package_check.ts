@@ -7,7 +7,7 @@ import type { EnvPairs } from './env.ts';
 import type { CheckerResult } from './checker.ts';
 import { applyVersionTemplate, fetchLatestVersion } from './checker.ts';
 import { preparePackageDiff, resolveHeadCommit, resolvePackageGitUrl, type GitCloneResult } from './git.ts';
-import { isStaticVersionPkgbuild, parsePkgBuild, updateDynamicPkgver, updatePkgBuild, withPkgbase, type PkgBuildData, type PkgBuildParser } from './pkgbuild.ts';
+import { isStaticVersionPkgbuild, parsePkgBuild, readPkgBuildSources, updateDynamicPkgver, updatePkgBuild, withPkgbase, type PkgBuildData, type PkgBuildParser } from './pkgbuild.ts';
 import { VersionStore, sameVersionMarker, type VersionMarker } from './version_store.ts';
 import { hasBuiltPackage } from './repo.ts';
 import { ensurePackageCheckWorkDirs, getPackageWorkDirs, packageWorkEnvPairs, type PackageWorkDirs } from './workdirs.ts';
@@ -18,6 +18,7 @@ import { saveVersionStoreUpdate, type ProjectGitManager } from './project_git.ts
 import type { WebhookNotifier } from './webhook.ts';
 import {
     parsePkgBuildInSandbox,
+    readPkgBuildSourcesInSandbox,
     resolvePkgbuildSandboxOptions,
     updateDynamicPkgverInSandbox,
     updatePkgBuildInSandbox,
@@ -35,6 +36,8 @@ export interface PackageBuildPlan {
     pkgbuildModified: boolean;
     workDirs: PackageWorkDirs;
     env: EnvPairs;
+    /** Source entries of the PKGBUILD as it is now, read the same way (host or sandbox) as the version. */
+    listSources: () => Promise<string[]>;
 }
 
 export interface PackageVersionCheckResult {
@@ -48,6 +51,7 @@ export interface PackageVersionCheckDeps {
     parsePkgBuild?: typeof parsePkgBuild;
     updateDynamicPkgver?: typeof updateDynamicPkgver;
     updatePkgBuild?: typeof updatePkgBuild;
+    readPkgBuildSources?: typeof readPkgBuildSources;
     hasBuiltPackage?: typeof hasBuiltPackage;
     resolveHeadCommit?: typeof resolveHeadCommit;
 }
@@ -254,7 +258,7 @@ async function processPackageVersionCheck(
         }
     }
 
-    const sandbox = deps.parsePkgBuild || deps.updateDynamicPkgver || deps.updatePkgBuild
+    const sandbox = deps.parsePkgBuild || deps.updateDynamicPkgver || deps.updatePkgBuild || deps.readPkgBuildSources
         ? undefined
         : resolvePkgbuildSandboxOptions({ config: pkgbuildSandbox, builder: builderType, workDirs });
     const parse = deps.parsePkgBuild
@@ -277,6 +281,10 @@ async function processPackageVersionCheck(
                 checksumArch?: string
             ) => updatePkgBuildInSandbox(pkgname, pkgbuildPath, updates, forceBumpRel, parser, env, sandbox, workDirs, checksumArch))
             : updatePkgBuild);
+    const readSources = deps.readPkgBuildSources
+        ?? (sandbox
+            ? ((pkgbuildPath: string, env?: EnvPairs) => readPkgBuildSourcesInSandbox(pkgbuildPath, env, sandbox, workDirs))
+            : readPkgBuildSources);
 
     const dynamicPkgverRan = await updateDynamic(pkgbuildPath, env);
 
@@ -383,6 +391,7 @@ async function processPackageVersionCheck(
         pkgbuildModified,
         workDirs,
         env,
+        listSources: () => readSources(pkgbuildPath, env),
     };
 }
 

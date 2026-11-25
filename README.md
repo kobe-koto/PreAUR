@@ -407,6 +407,15 @@ With `repo.removeOrphans`, PreAUR also cleans the repository before dropping the
 - Entries dropped while `removeOrphans` was off are gone, so enabling it later does not clean those packages; remove them once by hand with `repo-remove` and `rm`.
 - Cleanup runs only when there is something to process; a run with no packages, or with `-p` naming a package not in the config, exits before it.
 
+### Downloaded Sources
+
+Each package downloads its sources into `work/<pkgname>/srcdest/` (`SRCDEST`). After a successful build, PreAUR lists the PKGBUILD's sources with `makepkg --printsrcinfo` and by reading every declared `source_*` array (in the PKGBUILD sandbox when it is enabled), and deletes the files in that directory that no entry refers to, such as the tarballs of previous versions. This is always on. Things to know:
+
+- Only regular files are deleted. VCS sources (git, hg, svn and bzr checkouts, `*.fossil` repositories) and symlinks are kept, even when no entry refers to them anymore; delete them by hand if needed.
+- A partial download `<name>.part` is kept while `<name>` is still a source, since makepkg resumes it.
+- Every `source_<arch>=()` array counts as referenced, whether or not `arch=()` lists the architecture, also with `checksumArch: target`.
+- If listing the sources fails, nothing is deleted and the build still counts as successful. Packages that are skipped or fail to build are not cleaned up until their next successful build.
+
 For anything these options do not cover, `paccache -rk1 -c repo/<name>` works on the repository directory, or check out my [archavenger](https://github.com/kobe-koto/archavenger).
 
 ## Development

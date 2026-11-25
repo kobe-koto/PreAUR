@@ -407,6 +407,15 @@ repo:
 - 关闭 `removeOrphans` 期间删除的条目已经不在了，之后再开启也不会清理这些包，需要用 `repo-remove` 和 `rm` 手动清理一次；
 - 只有在有包需要处理时才会执行清理；没有任何包，或 `-p` 指定的包不在配置中时，程序会在清理之前退出。
 
+### 下载的源文件
+
+每个包的源文件下载到 `work/<pkgname>/srcdest/`（`SRCDEST`）。每次构建成功后，PreAUR 用 `makepkg --printsrcinfo` 并读取所有已声明的 `source_*` 数组来列出 PKGBUILD 的源（启用 PKGBUILD 沙箱时在沙箱中执行），并删除该目录下不被任何条目引用的文件，例如旧版本的源码包。这一功能始终开启。注意：
+
+- 只删除普通文件。VCS 源（git、hg、svn、bzr 的仓库目录和 `*.fossil` 仓库）以及符号链接即使已不再被引用也会保留，需要时请手动删除；
+- 只要 `<name>` 仍是源文件，未下载完的 `<name>.part` 就会保留，makepkg 会接着下载；
+- 所有 `source_<arch>=()` 数组都算作被引用，无论 `arch=()` 是否列出该架构，使用 `checksumArch: target` 时也是如此；
+- 列出源失败时不会删除任何文件，构建仍算作成功。被跳过或构建失败的包要等到下一次构建成功才会清理。
+
 这些选项覆盖不到的情况，可以对仓库目录使用 `paccache -rk1 -c repo/<name>`，或者看看我的 [archavenger](https://github.com/kobe-koto/archavenger)。
 
 ## 开发

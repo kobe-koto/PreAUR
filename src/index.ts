@@ -17,7 +17,7 @@ import { describeToolchain, isDefaultToolchain, resolveToolchain, toolchainPacka
 import { VersionStore, findOrphanVersions } from './version_store.ts';
 import { runApprovalCheck } from './approval.ts';
 import { runPackageVersionCheck, type PackageBuildPlan } from './package_check.ts';
-import { ensurePackageLogDir } from './workdirs.ts';
+import { ensurePackageLogDir, pruneUnreferencedSourceFiles } from './workdirs.ts';
 import { ProjectGitManager, saveVersionStoreUpdate } from './project_git.ts';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook.ts';
 import { formatPacmanVersion } from './pacman_version.ts';
@@ -352,6 +352,19 @@ program
 
                                 // Sync successful build variables
                                 await saveVersionStoreUpdate(versionStore, pkg.pkgname, { ...finalData, version_marker: versionMarker }, projectGit);
+
+                                // Drop downloads the PKGBUILD no longer refers to, such as previous versions' tarballs.
+                                try {
+                                    const { removed, failed } = await pruneUnreferencedSourceFiles(workDirs.srcdest, await plan.listSources());
+                                    if (removed.length > 0) {
+                                        console.log(PreaurMessager(`Removed ${removed.length} unreferenced source file(s) of ${pkg.pkgname} from SRCDEST: ${removed.join(', ')}`));
+                                    }
+                                    for (const { name, error } of failed) {
+                                        console.warn(PreaurMessager(`Could not remove unreferenced source file ${name} of ${pkg.pkgname}: ${error}`));
+                                    }
+                                } catch (e: any) {
+                                    console.warn(PreaurMessager(`Skipped source file cleanup for ${pkg.pkgname}: ${e.message}`));
+                                }
 
                             } catch (pkgError: any) {
                                 console.error(PreaurMessager(`Error processing ${pkg.pkgname}: ${pkgError.message}`));

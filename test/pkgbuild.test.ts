@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { createHash } from 'node:crypto';
-import { exec } from 'node:child_process';
+import { exec, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import {
@@ -13,7 +13,11 @@ import {
     parseLiteralPkgbase,
     parsePkgBuild,
     parseSrcInfoPkgbase,
+    parsePkgBuildSourcesOutput,
+    parseSrcInfoSources,
     parseTargetArchChecksumOutput,
+    readPkgBuildSources,
+    sourceEntryFilename,
     updatePkgBuild,
     updateTargetArchChecksums,
 } from '../src/pkgbuild.ts';
@@ -313,5 +317,135 @@ describe('updateTargetArchChecksums', () => {
 
         expect(updatedAll).toBe(true);
         expect(await fs.readFile(pkgbuildPath, 'utf8')).toContain("sha256sums=('old-common')");
+    });
+});
+
+describe('PKGBUILD sources', () => {
+    const SRCINFO = [
+        'pkgbase = demo',
+        '\tpkgver = 1.0.0',
+        '\tpkgrel = 1',
+        '\tarch = x86_64',
+        '\tarch = aarch64',
+        '\tsource = demo-1.0.0.tar.gz::https://example.com/archive/v1.0.0.tar.gz',
+        '\tsource = fix.patch',
+        '\tsource_x86_64 = https://example.com/demo-x86_64.deb',
+        '\tsource_aarch64 = https://example.com/demo-aarch64.deb',
+        '\tsha256sums = SKIP',
+        '',
+        'pkgname = demo',
+        '',
+    ].join('\n');
+
+    test('reads source and every source_<arch> entry from printsrcinfo output', () => {
+        expect(parseSrcInfoSources(SRCINFO)).toEqual([
+            'demo-1.0.0.tar.gz::https://example.com/archive/v1.0.0.tar.gz',
+            'fix.patch',
+            'https://example.com/demo-x86_64.deb',
+            'https://example.com/demo-aarch64.deb',
+        ]);
+    });
+
+    test('refuses output without a pkgbase section instead of reporting no sources', () => {
+        expect(() => parseSrcInfoSources('')).toThrow('no pkgbase section');
+        expect(parseSrcInfoSources('pkgbase = demo\n\tpkgver = 1\n')).toEqual([]);
+    });
+
+    test('adds every declared source_* array and drops duplicates', () => {
+        const stdout = `login noise\n${SRCINFO}\n__PREAUR_SOURCE_ARRAYS__\nhttps://example.com/demo-x86_64.deb\nhttps://example.com/demo-riscv64.deb\n\n`;
+        expect(parsePkgBuildSourcesOutput(stdout)).toEqual([
+            'demo-1.0.0.tar.gz::https://example.com/archive/v1.0.0.tar.gz',
+            'fix.patch',
+            'https://example.com/demo-x86_64.deb',
+            'https://example.com/demo-aarch64.deb',
+            'https://example.com/demo-riscv64.deb',
+        ]);
+    });
+
+    test('refuses output without the marker or printsrcinfo output', () => {
+        expect(() => parsePkgBuildSourcesOutput(SRCINFO)).toThrow('missing marker');
+        expect(() => parsePkgBuildSourcesOutput('\n__PREAUR_SOURCE_ARRAYS__\na.tar.gz\n')).toThrow('no pkgbase section');
+    });
+
+    const FILENAME_CASES: Array<[string, string]> = [
+        ['https://example.com/foo-1.2.tar.gz', 'foo-1.2.tar.gz'],
+        ['foo.tar.gz::https://example.com/download?id=1', 'foo.tar.gz'],
+        ['a::b::https://example.com/y', 'a'],
+        ['fix.patch', 'fix.patch'],
+        ['https://example.com/download?file=a.tar.gz', 'download?file=a.tar.gz'],
+        ['file:///tmp/local.tar', 'local.tar'],
+        ['git+https://github.com/a/b.git#branch=main', 'b'],
+        ['git+https://github.com/a/b.git?signed#tag=v1', 'b'],
+        ['git+https://github.com/a/b/', 'b'],
+        ['git://example.com/repo.git.bak', 'repo'],
+        ['name::git+https://github.com/a/b.git', 'name'],
+        ['hg+https://hg.example.com/repo#revision=1', 'repo'],
+        ['svn+https://svn.example.com/trunk/', 'trunk'],
+        ['bzr+lp:project', 'project'],
+        ['bzr+https://bzr.example.com/repo', 'repo'],
+        ['fossil+https://fossil.example.com/repo', 'repo.fossil'],
+        ['https://example.com/lp:odd.tar.gz', 'lp:odd.tar.gz'],
+    ];
+
+    test('names source entries the way makepkg stores them', () => {
+        for (const [entry, filename] of FILENAME_CASES) {
+            expect(sourceEntryFilename(entry)).toBe(filename);
+        }
+    });
+
+    test.skipIf(!Bun.which('makepkg'))('matches makepkg get_filename', async () => {
+        const entries = FILENAME_CASES.map(([entry]) => entry);
+        const script = 'source /usr/share/makepkg/util/source.sh; for e in "$@"; do get_filename "$e"; done';
+        const { stdout } = await promisify(execFile)('bash', ['-c', script, 'bash', ...entries]);
+        expect(entries.map(sourceEntryFilename)).toEqual(stdout.split('\n').slice(0, -1));
+    });
+
+    test.skipIf(!Bun.which('makepkg'))('reads the sources of every architecture with makepkg --printsrcinfo', async () => {
+        const pkgbuildPath = await writePkgBuild([
+            'pkgname=demo',
+            'pkgver=1.2.3',
+            'pkgrel=1',
+            "arch=('x86_64' 'aarch64')",
+            'source=("demo-$pkgver.tar.gz::https://example.com/v$pkgver.tar.gz" "git+https://example.com/demo.git")',
+            'source_x86_64=("https://example.com/demo-$pkgver-x86_64.deb")',
+            'source_aarch64=("https://example.com/demo-$pkgver-aarch64.deb")',
+            "sha256sums=('SKIP' 'SKIP')",
+            "sha256sums_x86_64=('SKIP')",
+            "sha256sums_aarch64=('SKIP')",
+            'package() { :; }',
+            '',
+        ].join('\n'));
+
+        expect(await readPkgBuildSources(pkgbuildPath)).toEqual([
+            'demo-1.2.3.tar.gz::https://example.com/v1.2.3.tar.gz',
+            'git+https://example.com/demo.git',
+            'https://example.com/demo-1.2.3-x86_64.deb',
+            'https://example.com/demo-1.2.3-aarch64.deb',
+        ]);
+    });
+
+    test.skipIf(!Bun.which('makepkg'))('keeps source_<arch> arrays that arch=() does not list', async () => {
+        const pkgbuildPath = await writePkgBuild([
+            'pkgname=demo',
+            'pkgver=1.0',
+            'pkgrel=1',
+            "arch=('any')",
+            "source=('generic.txt::https://example.com/generic.txt')",
+            "source_x86_64=('https://example.com/demo-x86_64.bin')",
+            "sha256sums=('SKIP')",
+            "sha256sums_x86_64=('SKIP')",
+            'package() { :; }',
+            '',
+        ].join('\n'));
+
+        expect(await readPkgBuildSources(pkgbuildPath)).toEqual([
+            'generic.txt::https://example.com/generic.txt',
+            'https://example.com/demo-x86_64.bin',
+        ]);
+    });
+
+    test.skipIf(!Bun.which('makepkg'))('fails instead of listing sources when makepkg --printsrcinfo fails', async () => {
+        const pkgbuildPath = await writePkgBuild("pkgname=demo\nsource=('a.tar.gz')\n");
+        await expect(readPkgBuildSources(pkgbuildPath)).rejects.toThrow();
     });
 });

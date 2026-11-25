@@ -32,6 +32,114 @@ export function parseSrcInfoPkgbase(stdout: string): string | undefined {
     return normalizePkgbase(stdout.match(/^\s*pkgbase\s*=\s*(.+)$/m)?.[1]);
 }
 
+/**
+ * Every source=() and source_<arch>=() entry from makepkg --printsrcinfo
+ * output. printsrcinfo lists the arrays of every architecture in arch=(), and
+ * sources only appear in the pkgbase section. Throws when the output has no
+ * pkgbase line, so a truncated or failed run never reads as "no sources".
+ */
+export function parseSrcInfoSources(stdout: string): string[] {
+    if (!/^\s*pkgbase\s*=/m.test(stdout)) {
+        throw new Error('makepkg --printsrcinfo output has no pkgbase section');
+    }
+
+    const sources: string[] = [];
+    for (const line of stdout.split('\n')) {
+        const value = line.match(/^\s*source(?:_[^\s=]+)?\s*=\s*(.*)$/)?.[1]?.trim();
+        if (value) sources.push(value);
+    }
+    return sources;
+}
+
+const VCS_PROTOCOLS = new Set(['bzr', 'fossil', 'git', 'hg', 'svn']);
+
+/** Protocol of a source entry, as makepkg's get_protocol computes it. */
+function sourceEntryProtocol(entry: string): string {
+    if (entry.includes('://')) {
+        const uri = entry.includes('::') ? entry.slice(entry.indexOf('::') + 2) : entry;
+        const proto = uri.slice(0, uri.indexOf('://'));
+        return proto.split('+')[0]!;
+    }
+    if (entry.includes('lp:')) {
+        const uri = entry.includes('::') ? entry.slice(entry.indexOf('::') + 2) : entry;
+        const end = uri.indexOf('+lp:');
+        return end === -1 ? uri : uri.slice(0, end);
+    }
+    return 'local';
+}
+
+/**
+ * Name under which makepkg stores a source entry in SRCDEST (or finds it next
+ * to the PKGBUILD), as makepkg's get_filename computes it: the part before
+ * "::" when given, the repository name for VCS sources, otherwise the last
+ * path component of the URL.
+ */
+export function sourceEntryFilename(entry: string): string {
+    if (entry.includes('::')) {
+        return entry.slice(0, entry.indexOf('::'));
+    }
+
+    const proto = sourceEntryProtocol(entry);
+    if (!VCS_PROTOCOLS.has(proto)) {
+        return entry.slice(entry.lastIndexOf('/') + 1);
+    }
+
+    let filename = entry.split('#')[0]!.split('?')[0]!;
+    if (filename.endsWith('/')) filename = filename.slice(0, -1);
+    filename = filename.slice(filename.lastIndexOf('/') + 1);
+    if (proto === 'bzr' && filename.includes('lp:')) {
+        filename = filename.slice(filename.indexOf('lp:') + 3);
+    }
+    if (proto === 'fossil') {
+        filename = `${filename}.fossil`;
+    }
+    if (proto === 'git' && filename.includes('.git')) {
+        filename = filename.slice(0, filename.indexOf('.git'));
+    }
+    return filename;
+}
+
+const SOURCES_ARRAYS_MARKER = '__PREAUR_SOURCE_ARRAYS__';
+
+/**
+ * Bash script, run in the PKGBUILD directory, that prints makepkg
+ * --printsrcinfo output, a marker, then every entry of every declared
+ * source_* array. printsrcinfo only lists source_<arch> for architectures in
+ * arch=(), but makepkg also downloads source_$CARCH when arch=() does not list
+ * it (arch=('any'), or a builder overriding CARCH), so all declared arrays
+ * count as referenced. Fails, and so deletes nothing, when printsrcinfo fails.
+ */
+export const PKGBUILD_SOURCES_SCRIPT = [
+    'set -eo pipefail',
+    'makepkg --printsrcinfo',
+    `printf '%s\\n' ${shellQuote(SOURCES_ARRAYS_MARKER)}`,
+    'set +eu',
+    'source ./PKGBUILD >/dev/null 2>&1',
+    'for _preaur_var in "${!source_@}"; do _preaur_ref="${_preaur_var}[@]"; printf \'%s\\n\' "${!_preaur_ref}"; done',
+].join('\n');
+
+/** Source entries from PKGBUILD_SOURCES_SCRIPT output, without duplicates. */
+export function parsePkgBuildSourcesOutput(stdout: string): string[] {
+    const marker = stdout.lastIndexOf(`\n${SOURCES_ARRAYS_MARKER}\n`);
+    if (marker === -1) {
+        throw new Error('Could not parse PKGBUILD sources: missing marker');
+    }
+
+    const declared = stdout.slice(marker + SOURCES_ARRAYS_MARKER.length + 2)
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+    return [...new Set([...parseSrcInfoSources(stdout.slice(0, marker)), ...declared])];
+}
+
+/** Source entries of the PKGBUILD (see PKGBUILD_SOURCES_SCRIPT), read on the host. */
+export async function readPkgBuildSources(pkgbuildPath: string, env?: EnvPairs): Promise<string[]> {
+    const { stdout } = await execAsync(shellEnvCommand(`bash -c ${shellQuote(PKGBUILD_SOURCES_SCRIPT)}`, env), {
+        cwd: path.dirname(pkgbuildPath),
+    });
+    return parsePkgBuildSourcesOutput(stdout);
+}
+
 function firstShellWord(text: string): string | undefined {
     const trimmed = text.trimStart();
     const quote = trimmed[0];

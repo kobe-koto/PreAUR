@@ -121,6 +121,27 @@ describe('runPackageVersionCheck', () => {
         expect(store.get('demo')?.pkgrel).toBeUndefined();
     });
 
+    test('lists the PKGBUILD sources of a build plan with its work environment', async () => {
+        const baseDir = await makeBaseDir();
+        const store = new VersionStore(baseDir);
+        await store.load();
+
+        const deps = makeDeps({ pkgver: '1.0.0', pkgrel: 1 });
+        const calls: Array<{ pkgbuildPath: string; env?: EnvPairs }> = [];
+        deps.readPkgBuildSources = async (pkgbuildPath, env) => {
+            calls.push({ pkgbuildPath, env });
+            return ['https://example.com/demo-1.0.0.tar.gz'];
+        };
+
+        const result = await runPackageVersionCheck([{ pkgname: 'demo', maintainer: 'preaur-owner' }], store, { baseDir, deps });
+        const plan = result.buildPlans[0]!;
+
+        expect(calls).toEqual([]);
+        expect(await plan.listSources()).toEqual(['https://example.com/demo-1.0.0.tar.gz']);
+        expect(calls).toEqual([{ pkgbuildPath: '/tmp/preaur-test/demo/PKGBUILD', env: plan.env }]);
+        expect(envPairsToRecord(plan.env).SRCDEST).toBe(path.join(baseDir, 'work', 'demo', 'srcdest'));
+    });
+
     test('syncs missing stored version and skips build when the repo artifact already exists', async () => {
         const baseDir = await makeBaseDir();
         const store = new VersionStore(baseDir);

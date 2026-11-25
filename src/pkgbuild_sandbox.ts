@@ -6,7 +6,7 @@ import * as path from 'node:path';
 
 import type { PreaurPkgbuildSandboxConfig } from './config.ts';
 import { envAssignments, shellQuote, type EnvPair, type EnvPairs } from './env.ts';
-import { PKGBASE_SHELL_EXPR, normalizePkgbase, parseSrcInfoPkgbase, updatePkgBuildWithOps, updateTargetArchChecksums, withPkgbase, type PkgBuildData, type PkgBuildParser } from './pkgbuild.ts';
+import { PKGBASE_SHELL_EXPR, normalizePkgbase, PKGBUILD_SOURCES_SCRIPT, parsePkgBuildSourcesOutput, parseSrcInfoPkgbase, updatePkgBuildWithOps, updateTargetArchChecksums, withPkgbase, type PkgBuildData, type PkgBuildParser } from './pkgbuild.ts';
 import { DEVTOOLS_DIR, resolveBasePacmanConfig, resolveDevtoolsBuildTarget } from './chroot_pacman.ts';
 import type { PackageWorkDirs } from './workdirs.ts';
 import { constructMessager } from './logger.ts';
@@ -160,6 +160,24 @@ export async function parsePkgBuildInSandbox(
         captureStdout: true,
     });
     return parseSandboxVersionOutput(stdout);
+}
+
+/** Source entries of the PKGBUILD (see PKGBUILD_SOURCES_SCRIPT), read in the sandbox. */
+export async function readPkgBuildSourcesInSandbox(
+    pkgbuildPath: string,
+    env: EnvPairs | undefined,
+    sandbox: ResolvedPkgbuildSandboxOptions,
+    workDirs: PackageWorkDirs
+): Promise<string[]> {
+    const stdout = await runSandboxCommand({
+        pkgbuildPath,
+        env,
+        sandbox,
+        workDirs,
+        command: `bash -lc ${shellQuote(PKGBUILD_SOURCES_SCRIPT)}`,
+        captureStdout: true,
+    });
+    return parsePkgBuildSourcesOutput(stdout);
 }
 
 export async function updateDynamicPkgverInSandbox(
