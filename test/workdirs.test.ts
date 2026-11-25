@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { pruneUnreferencedSourceFiles } from '../src/workdirs.ts';
+import { packageCacheDirs, pruneUnreferencedSourceFiles, removeDirs } from '../src/workdirs.ts';
 
 const tmpDirs: string[] = [];
 
@@ -69,3 +69,41 @@ describe('pruneUnreferencedSourceFiles', () => {
     });
 });
 
+describe('packageCacheDirs', () => {
+    test('resolves the work and pkgbuilds directories of a package', () => {
+        expect(packageCacheDirs('/srv/preaur', 'demo-bin')).toEqual([
+            '/srv/preaur/work/demo-bin',
+            '/srv/preaur/pkgbuilds/demo-bin',
+        ]);
+    });
+
+    test('refuses names that are not a single path segment', () => {
+        for (const name of ['', '.', '..', 'a/b', '../x', 'a\\b', 'a\0b']) {
+            expect(packageCacheDirs('/srv/preaur', name)).toBeUndefined();
+        }
+    });
+});
+
+describe('removeDirs', () => {
+    test('removes existing directories recursively and skips missing ones', async () => {
+        const base = await makeTmpDir();
+        const work = path.join(base, 'work', 'demo');
+        await fs.mkdir(path.join(work, 'srcdest'), { recursive: true });
+        await fs.writeFile(path.join(work, 'srcdest', 'a.tar.gz'), '');
+
+        expect(await removeDirs([work, path.join(base, 'pkgbuilds', 'demo')])).toEqual([work]);
+        expect(await fs.readdir(path.join(base, 'work'))).toEqual([]);
+    });
+
+    test('removes a symlink without following it', async () => {
+        const base = await makeTmpDir();
+        const target = await makeTmpDir();
+        await fs.writeFile(path.join(target, 'keep'), '');
+        await fs.mkdir(path.join(base, 'pkgbuilds'));
+        const link = path.join(base, 'pkgbuilds', 'demo');
+        await fs.symlink(target, link);
+
+        expect(await removeDirs([link])).toEqual([link]);
+        expect(await fs.readdir(target)).toEqual(['keep']);
+    });
+});

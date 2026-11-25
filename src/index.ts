@@ -17,7 +17,7 @@ import { describeToolchain, isDefaultToolchain, resolveToolchain, toolchainPacka
 import { VersionStore, findOrphanVersions } from './version_store.ts';
 import { runApprovalCheck } from './approval.ts';
 import { runPackageVersionCheck, type PackageBuildPlan } from './package_check.ts';
-import { ensurePackageLogDir, pruneUnreferencedSourceFiles } from './workdirs.ts';
+import { ensurePackageLogDir, packageCacheDirs, pruneUnreferencedSourceFiles, removeDirs } from './workdirs.ts';
 import { ProjectGitManager, saveVersionStoreUpdate } from './project_git.ts';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook.ts';
 import { formatPacmanVersion } from './pacman_version.ts';
@@ -92,6 +92,26 @@ program
                     console.error(PreaurMessager(`Failed to remove orphaned packages from repository (${orphanNames.join(', ')}); keeping their versions.json entries to retry next run: ${e.message}`));
                     orphanVersions = [];
                 }
+
+                // Then their AUR checkouts and build files; an entry is kept to retry when its directories cannot be removed.
+                const keptOrphans = new Set<string>();
+                for (const [pkgname] of orphanVersions) {
+                    const dirs = packageCacheDirs(process.cwd(), pkgname);
+                    if (!dirs) {
+                        console.warn(PreaurMessager(`Not removing work/ and pkgbuilds/ directories of ${JSON.stringify(pkgname)}: the name is not a single path segment.`));
+                        continue;
+                    }
+                    try {
+                        const removed = await removeDirs(dirs);
+                        if (removed.length > 0) {
+                            console.log(PreaurMessager(`Removed ${removed.map(dir => path.relative(process.cwd(), dir)).join(' and ')} of orphaned package ${pkgname}.`));
+                        }
+                    } catch (e: any) {
+                        console.error(PreaurMessager(`Failed to remove the directories of orphaned package ${pkgname}; keeping its versions.json entry to retry next run: ${e.message}`));
+                        keptOrphans.add(pkgname);
+                    }
+                }
+                orphanVersions = orphanVersions.filter(([pkgname]) => !keptOrphans.has(pkgname));
             }
             if (orphanVersions.length > 0) {
                 const orphanSnapshot = await projectGit?.snapshotData();

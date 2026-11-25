@@ -93,3 +93,36 @@ export async function pruneUnreferencedSourceFiles(
     }
     return result;
 }
+
+function childPath(parent: string, segment: string): string | undefined {
+    if (!segment || segment === '.' || segment === '..' || /[\/\\\0]/.test(segment)) return undefined;
+    const target = path.resolve(parent, segment);
+    return path.dirname(target) === parent ? target : undefined;
+}
+
+/**
+ * The work/ and pkgbuilds/ directories PreAUR keeps for a package, or
+ * undefined when pkgname is not a single path segment, so a name read from
+ * data/versions.json can never point outside those directories.
+ */
+export function packageCacheDirs(baseDir: string, pkgname: string): string[] | undefined {
+    const workDir = childPath(path.resolve(baseDir, 'work'), safePathSegment(pkgname));
+    const pkgbuildDir = childPath(path.resolve(baseDir, 'pkgbuilds'), pkgname);
+    return workDir && pkgbuildDir ? [workDir, pkgbuildDir] : undefined;
+}
+
+/** Recursively delete the given directories and return the ones that existed. A symlink is removed, not followed. */
+export async function removeDirs(dirs: string[]): Promise<string[]> {
+    const removed: string[] = [];
+    for (const dir of dirs) {
+        try {
+            await fs.lstat(dir);
+        } catch (e: any) {
+            if (e.code === 'ENOENT') continue;
+            throw e;
+        }
+        await fs.rm(dir, { recursive: true, force: true });
+        removed.push(dir);
+    }
+    return removed;
+}

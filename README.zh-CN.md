@@ -385,7 +385,7 @@ OnCalendar=*-*-* 4:00:00
 repo:
   name: localrepo
   removeOld: true # repo-add -R，约等于 `paccache -rk1 -c repo/localrepo`
-  removeOrphans: true # 对从配置中移除的包执行 repo-remove
+  removeOrphans: true # 对从配置中移除的包执行 repo-remove，并删除 work/<pkgname> 和 pkgbuilds/<pkgname>
 ```
 
 开启 `removeOld` 后，如果新构建的包替换了数据库中同名但版本不同的包，`repo-add -R` 会删除旧的包文件和对应的 `.sig`。重新添加完全相同的版本只会提示 "already existed"，不会删除文件。另外：
@@ -399,7 +399,7 @@ repo:
 
 某个包不再出现在 `packages` 中时，PreAUR 总会从 `data/versions.json` 删除它的条目（启用[项目 Git 自动化](#项目-git-自动化)时提交为 `versions: remove <pkgname>`）。`data/known_packages` 和 `data/known_maintainers` 会保留，所以把包重新加回来时批准状态不变，如果包文件还在也不会重新构建。
 
-开启 `repo.removeOrphans` 后，PreAUR 会在删除条目之前先清理仓库：数据库中 `%BASE%` 等于该包 pkgbase 的所有条目都会通过 `repo-remove` 移除（包括拆分包和 `-debug` 包），并删除对应的包文件和 `.sig`。如果 `repo-remove` 失败，条目会保留，下次运行时重试。注意：
+开启 `repo.removeOrphans` 后，PreAUR 会在删除条目之前先做清理：数据库中 `%BASE%` 等于该包 pkgbase 的所有条目都会通过 `repo-remove` 移除（包括拆分包和 `-debug` 包），并删除对应的包文件和 `.sig`；然后删除该包的 `work/<pkgname>/`（下载的源文件和构建文件）和 AUR 仓库副本 `pkgbuilds/<pkgname>/`，`logs/` 下的构建日志会保留。如果 `repo-remove` 或删除目录失败，条目会保留，下次运行时重试。注意：
 
 - PreAUR 解析 PKGBUILD 时会把 pkgbase（`pkgbase`，未定义时取第一个 `pkgname`）记录到 `data/versions.json`。没有记录的条目会依次尝试 AUR 包名和配置中的 `pkgname` 作为 base；数据库中没有匹配的条目时，退回到删除 `<pkgname>` 和 `<pkgname>-debug`；
 - 只会删除 `data/versions.json` 里记录过的包，并且不会删除名字或 pkgbase 属于配置中现有包的条目。手动放进仓库的包不会被动到；
